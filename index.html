@@ -1599,20 +1599,12 @@ async function pickerCallback(data) {
   const mimeType = file.mimeType;
   const name = file.name;
 
-  // サムネイルURLを取得（CORSなしで使える）
-  const thumbnailUrl = file.thumbnails?.[file.thumbnails.length - 1]?.url
-    || `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
-
-  // ファイル名をタイトルに設定
-  if (!document.getElementById('ocrTitle').value) {
-    document.getElementById('ocrTitle').value = name.replace(/\.[^.]+$/, '');
-  }
-
   document.getElementById('ocrPreview').style.display = 'block';
   document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('previewImg').src = thumbnailUrl;
-  document.getElementById('previewImg').style.display = 'block';
-  document.getElementById('ocrResult').value = '解析中...';
+  document.getElementById('previewImg').style.display = 'none';
+  document.getElementById('ocrTitle').value =
+    document.getElementById('ocrTitle').value || name.replace(/\.[^.]+$/, '');
+  document.getElementById('ocrResult').value = '';
   showOcrSpinner();
 
   const apiKey = DB.getApiKey();
@@ -1623,9 +1615,29 @@ async function pickerCallback(data) {
   }
 
   try {
-    const text = await callGemini(apiKey,
-      `以下のURLにある画像（読書メモや本のページ）のテキストをすべて正確に読み取ってください。テキスト以外の説明は不要です。\n\n画像URL: ${thumbnailUrl}`
+    // gapi.client経由でバイナリ取得（CORSを回避）
+    await new Promise((resolve) => gapi.load('client', resolve));
+    gapi.client.setToken({ access_token: accessToken });
+
+    const response = await gapi.client.request({
+      path: `https://www.googleapis.com/drive/v3/files/${fileId}`,
+      params: { alt: 'media' },
+    });
+
+    // レスポンスをBase64に変換
+    const base64 = btoa(
+      Array.from(new Uint8Array(
+        response.body.split('').map(c => c.charCodeAt(0))
+      ), b => String.fromCharCode(b)).join('')
     );
+
+    // プレビュー表示
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    document.getElementById('previewImg').src = dataUrl;
+    document.getElementById('previewImg').style.display = 'block';
+
+    // Gemini Vision APIで解析
+    const text = await callGeminiVision(apiKey, base64, mimeType);
     document.getElementById('ocrResult').value = text;
     showStatus('OCR完了！');
   } catch (err) {
