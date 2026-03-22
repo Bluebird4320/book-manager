@@ -1595,6 +1595,56 @@ function createPicker() {
   picker.setVisible(true);
 }
 
+async function processBlob(blob, mimeType, fileName) {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    // プレビュー表示
+    document.getElementById('ocrPreview').style.display = 'block';
+    document.getElementById('uploadArea').style.display = 'none';
+    showOcrSpinner();
+    if (mimeType.startsWith('image/')) {
+      document.getElementById('previewImg').src = e.target.result;
+      document.getElementById('previewImg').style.display = 'block';
+    } else {
+      document.getElementById('previewImg').style.display = 'none';
+    }
+
+    // ファイル名をタイトルのヒントに
+    const baseName = fileName.replace(/\.[^.]+$/, '');
+    if (!document.getElementById('ocrTitle').value) {
+      document.getElementById('ocrTitle').value = baseName;
+    }
+
+    const apiKey = DB.getApiKey();
+    if (!apiKey) {
+      hideOcrSpinner();
+      showStatus('設定画面でGemini APIキーを設定してください', true);
+      return;
+    }
+
+    document.getElementById('ocrResult').value = 'Gemini APIで解析中...';
+    try {
+      let base64, resolvedMime;
+      if (mimeType.startsWith('image/')) {
+        base64 = await resizeImageToBase64(e.target.result);
+        resolvedMime = 'image/jpeg';
+      } else {
+        base64 = e.target.result.split(',')[1];
+        resolvedMime = mimeType;
+      }
+      const text = await callGeminiVision(apiKey, base64, resolvedMime);
+      document.getElementById('ocrResult').value = text;
+      showStatus('OCR完了！');
+    } catch (err) {
+      showStatus('OCRに失敗しました: ' + err.message, true);
+      document.getElementById('ocrResult').value = '';
+    } finally {
+      hideOcrSpinner();
+    }
+  };
+  reader.readAsDataURL(blob);
+}
+
 async function pickerCallback(data) {
   if (data.action !== google.picker.Action.PICKED) return;
 
@@ -1606,67 +1656,32 @@ async function pickerCallback(data) {
   showStatus('Google ドライブからファイルを取得中...');
 
   try {
-    // Step1: ファイルのメタデータを取得
-    const metaRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,webContentLink`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const meta = await metaRes.json();
-
-    // Step2: webContentLinkでダウンロード
-    const res = await fetch(meta.webContentLink, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const blob = await res.blob();
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      // プレビュー表示
-      document.getElementById('ocrPreview').style.display = 'block';
-      document.getElementById('uploadArea').style.display = 'none';
-      showOcrSpinner();
-      if (mimeType.startsWith('image/')) {
-        document.getElementById('previewImg').src = e.target.result;
-        document.getElementById('previewImg').style.display = 'block';
-      } else {
-        document.getElementById('previewImg').style.display = 'none';
-      }
-
-      // ファイル名をタイトルのヒントに
-      const baseName = fileName.replace(/\.[^.]+$/, '');
-      if (!document.getElementById('ocrTitle').value) {
-        document.getElementById('ocrTitle').value = baseName;
-      }
-
-      const apiKey = DB.getApiKey();
-      if (!apiKey) {
-        hideOcrSpinner();
-        showStatus('設定画面でGemini APIキーを設定してください', true);
-        return;
-      }
-
-      document.getElementById('ocrResult').value = 'Gemini APIで解析中...';
-      try {
-        let base64, resolvedMime;
-        if (mimeType.startsWith('image/')) {
-          base64 = await resizeImageToBase64(e.target.result);
-          resolvedMime = 'image/jpeg';
-        } else {
-          base64 = e.target.result.split(',')[1];
-          resolvedMime = mimeType;
+    // ファイルをBlobで取得（Drive API v3の正しい方法）
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': mimeType
         }
-        const text = await callGeminiVision(apiKey, base64, resolvedMime);
-        document.getElementById('ocrResult').value = text;
-        showStatus('OCR完了！');
-      } catch (err) {
-        showStatus('OCRに失敗しました: ' + err.message, true);
-        document.getElementById('ocrResult').value = '';
-      } finally {
-        hideOcrSpinner();
       }
-    };
-    reader.readAsDataURL(blob);
+    );
+
+    if (res.status === 403) {
+      // 共有ドライブの場合
+      const res2 = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true&acknowledgeAbuse=true`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+      if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+      const blob2 = await res2.blob();
+      processBlob(blob2, mimeType, fileName);
+      return;
+    }
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    processBlob(blob, mimeType, fileName);
   } catch (err) {
     showStatus('ファイル取得に失敗しました: ' + err.message, true);
   }
