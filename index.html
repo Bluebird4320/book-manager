@@ -1606,11 +1606,17 @@ async function pickerCallback(data) {
   showStatus('Google ドライブからファイルを取得中...');
 
   try {
-    // ファイルをバイナリで取得
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    // Step1: ファイルのメタデータを取得
+    const metaRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,webContentLink`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
+    const meta = await metaRes.json();
+
+    // Step2: webContentLinkでダウンロード
+    const res = await fetch(meta.webContentLink, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const blob = await res.blob();
