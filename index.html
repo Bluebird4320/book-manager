@@ -58,9 +58,100 @@ a { color: var(--amber); text-decoration: none; }
 /* ============================================================
    レイアウト
 ============================================================ */
-.page { display: none; padding: 20px 16px; max-width: 480px; margin: 0 auto; }
+.page { display: none; padding: 28px 32px; max-width: 760px; margin: 0 auto; }
 .page.active { display: block; animation: fadeIn .2s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* PC レイアウト */
+@media (min-width: 768px) {
+  body { padding-bottom: 0; display: flex; }
+
+  /* サイドバーナビ */
+  .nav {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 200px;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    padding: 32px 0 24px;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    gap: 4px;
+  }
+  .nav-logo {
+    font-family: var(--font-head);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--cream);
+    padding: 0 20px 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+    display: block;
+  }
+  .nav-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 12px 20px;
+    font-size: 14px;
+    gap: 12px;
+    border-radius: 0;
+    text-align: left;
+  }
+  .nav-btn.active {
+    background: var(--bg3);
+    border-left: 3px solid var(--amber);
+    padding-left: 17px;
+  }
+  .nav-btn svg { width: 18px; height: 18px; }
+
+  /* メインコンテンツ */
+  .page {
+    margin-left: 200px;
+    max-width: 900px;
+    padding: 40px 48px;
+    width: 100%;
+  }
+
+  /* 2カラムグリッド（本棚・統計） */
+  .grid-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .grid-2col .card { margin-bottom: 0; }
+
+  /* 詳細モーダルをセンターに */
+  .modal-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .modal {
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    max-width: 600px;
+    width: 100%;
+    max-height: 80vh;
+  }
+
+  /* フォームを広げる */
+  .page#page-add { max-width: 680px; }
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+}
+
+/* スマホ */
+@media (max-width: 767px) {
+  .nav-logo { display: none; }
+  .page { padding: 20px 16px; max-width: 480px; }
+  .grid-2col { display: block; }
+  .form-row { display: block; }
+}
 
 .page-title {
   font-family: var(--font-head);
@@ -477,7 +568,7 @@ a { color: var(--amber); text-decoration: none; }
   </div>
 
   <!-- 本一覧 -->
-  <div id="bookList"></div>
+  <div id="bookList" class="grid-2col"></div>
 </div>
 
 <!-- ============================================================
@@ -493,6 +584,7 @@ a { color: var(--amber); text-decoration: none; }
 
   <!-- 手入力タブ -->
   <div id="tab-manual">
+  <div class="form-row">
     <div class="form-group">
       <label class="form-label">タイトル *</label>
       <input type="text" id="inputTitle" placeholder="本のタイトル">
@@ -501,6 +593,7 @@ a { color: var(--amber); text-decoration: none; }
       <label class="form-label">読書の目的・問い</label>
       <input type="text" id="inputPurpose" placeholder="この本から何を得たいか">
     </div>
+  </div>
     <div class="form-group">
       <label class="form-label">メモ</label>
       <textarea id="inputMemo" placeholder="読書メモ・気づき・引用など"></textarea>
@@ -649,6 +742,7 @@ a { color: var(--amber); text-decoration: none; }
      ボトムナビ
 ============================================================ -->
 <nav class="nav">
+  <span class="nav-logo">読書ノート</span>
   <button class="nav-btn active" onclick="showPage('shelf')" id="nav-shelf">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
     本棚
@@ -1262,7 +1356,7 @@ function renderStats() {
   const max = Math.max(...months.map(m => m[1]));
 
   let html = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;">
       <div class="goal-card" style="text-align:center;">
         <div style="font-size:32px;font-family:var(--font-head);color:var(--amber);">${books}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px;">冊</div>
@@ -1270,6 +1364,10 @@ function renderStats() {
       <div class="goal-card" style="text-align:center;">
         <div style="font-size:32px;font-family:var(--font-head);color:var(--amber);">${sessions.length}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px;">セッション</div>
+      </div>
+      <div class="goal-card" style="text-align:center;">
+        <div style="font-size:32px;font-family:var(--font-head);color:var(--amber);">${Object.keys(monthly).length}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">読書月数</div>
       </div>
     </div>
 
@@ -1295,11 +1393,13 @@ function renderStats() {
     </div>
 
     <div class="section-label">最近の読書（5件）</div>
+    <div class="grid-2col">
     ${sessions.slice(-5).reverse().map(s => `
       <div class="card" onclick="openDetail('${s.book_id}')">
         <div class="card-title">${esc(s.タイトル)}</div>
         <div class="card-meta"><span>${s.日付}</span><span class="badge badge-muted">${esc(s.モード)}</span></div>
-      </div>`).join('')}`;
+      </div>`).join('')}
+    </div>`;
 
   document.getElementById('statsContent').innerHTML = html;
 }
