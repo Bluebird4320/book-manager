@@ -540,6 +540,8 @@ a { color: var(--amber); text-decoration: none; }
 /* ステータスバッジ */
 .status-icon { font-size: 32px; margin-bottom: 12px; }
 </style>
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
 
@@ -618,9 +620,16 @@ a { color: var(--amber); text-decoration: none; }
 
   <!-- OCRタブ -->
   <div id="tab-ocr" style="display:none;">
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+      <button class="btn btn-ghost btn-block" onclick="openGooglePicker()" style="gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#4285F4"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="none" stroke="#4285F4"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="white" font-family="sans-serif">G</text></svg>
+        Google ドライブから選択
+      </button>
+      <div style="text-align:center;font-size:12px;color:var(--muted);">または</div>
+    </div>
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.5" style="margin:0 auto;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-      <p>画像・PDFをタップして選択</p>
+      <p>端末から画像・PDFを選択</p>
       <p style="font-size:11px;margin-top:4px;">JPEG / PNG / HEIC / PDF 対応</p>
     </div>
     <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none;" onchange="handleFileSelect(event)">
@@ -1476,8 +1485,143 @@ function esc(str) {
 }
 
 // ============================================================
-// === 初期化 ===
+// === Google Picker API ===
 // ============================================================
+const GOOGLE_CLIENT_ID = '484047766105-19lmapvraoaf9lb4jnb8h906rkufmit5.apps.googleusercontent.com';
+const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+let pickerApiLoaded = false;
+let gisLoaded = false;
+let tokenClient = null;
+let accessToken = null;
+
+// API読み込み
+function loadPickerApi() {
+  gapi.load('picker', () => { pickerApiLoaded = true; });
+}
+
+function initGis() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GOOGLE_SCOPE,
+    callback: (tokenResponse) => {
+      if (tokenResponse.error) {
+        showStatus('Google認証に失敗しました', true);
+        return;
+      }
+      accessToken = tokenResponse.access_token;
+      createPicker();
+    },
+  });
+  gisLoaded = true;
+}
+
+function openGooglePicker() {
+  if (!pickerApiLoaded || !gisLoaded) {
+    // APIがまだ読み込まれていない場合は初期化してから開く
+    gapi.load('picker', () => {
+      pickerApiLoaded = true;
+      initGis();
+      requestToken();
+    });
+    return;
+  }
+  requestToken();
+}
+
+function requestToken() {
+  if (!tokenClient) initGis();
+  if (accessToken) {
+    createPicker();
+  } else {
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  }
+}
+
+function createPicker() {
+  if (!pickerApiLoaded || !accessToken) return;
+
+  const view = new google.picker.DocsView()
+    .setIncludeFolders(false)
+    .setMimeTypes('image/jpeg,image/png,image/heic,image/webp,application/pdf');
+
+  const picker = new google.picker.PickerBuilder()
+    .addView(view)
+    .setOAuthToken(accessToken)
+    .setTitle('読書メモ・写真を選択')
+    .setCallback(pickerCallback)
+    .build();
+
+  picker.setVisible(true);
+}
+
+async function pickerCallback(data) {
+  if (data.action !== google.picker.Action.PICKED) return;
+
+  const file = data.docs[0];
+  const fileId = file.id;
+  const mimeType = file.mimeType;
+  const fileName = file.name;
+
+  showStatus('Google ドライブからファイルを取得中...');
+
+  try {
+    // ファイルをバイナリで取得
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const blob = await res.blob();
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1];
+
+      // プレビュー表示
+      document.getElementById('ocrPreview').style.display = 'block';
+      document.getElementById('uploadArea').style.display = 'none';
+      if (mimeType.startsWith('image/')) {
+        document.getElementById('previewImg').src = e.target.result;
+        document.getElementById('previewImg').style.display = 'block';
+      } else {
+        document.getElementById('previewImg').style.display = 'none';
+      }
+
+      // ファイル名をタイトルのヒントに
+      const baseName = fileName.replace(/\.[^.]+$/, '');
+      if (!document.getElementById('ocrTitle').value) {
+        document.getElementById('ocrTitle').value = baseName;
+      }
+
+      document.getElementById('ocrResult').value = '解析中...';
+
+      const apiKey = DB.getApiKey();
+      if (!apiKey) {
+        showStatus('設定画面でGemini APIキーを設定してください', true);
+        document.getElementById('ocrResult').value = '';
+        return;
+      }
+
+      try {
+        const text = await callGeminiVision(apiKey, base64, mimeType);
+        document.getElementById('ocrResult').value = text;
+        showStatus('OCR完了！');
+      } catch (err) {
+        showStatus('OCRに失敗しました: ' + err.message, true);
+        document.getElementById('ocrResult').value = '';
+      }
+    };
+    reader.readAsDataURL(blob);
+  } catch (err) {
+    showStatus('ファイル取得に失敗しました: ' + err.message, true);
+  }
+}
+
+// ページ読み込み後にGISを初期化
+window.addEventListener('load', () => {
+  if (typeof gapi !== 'undefined') loadPickerApi();
+  if (typeof google !== 'undefined' && google.accounts) initGis();
+});
 renderShelf();
 </script>
 </body>
