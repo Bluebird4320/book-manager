@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>読書ノート</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Shippori+Mincho:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CSS変数・リセット
+============================================================ */
+:root {
+  --bg:        #0f0e0c;
+  --bg2:       #1a1814;
+  --bg3:       #242018;
+  --surface:   #2e2a22;
+  --border:    #3d3830;
+  --amber:     #e8a84c;
+  --amber-dim: #a87830;
+  --cream:     #f0e8d8;
+  --muted:     #8a8070;
+  --danger:    #c0503a;
+  --success:   #5a9e6a;
+  --radius:    12px;
+  --radius-sm: 8px;
+  --font-body: 'Zen Kaku Gothic New', sans-serif;
+  --font-head: 'Shippori Mincho', serif;
+  --nav-h:     60px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--cream);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  padding-bottom: calc(var(--nav-h) + 16px);
+  -webkit-font-smoothing: antialiased;
+}
+button { cursor: pointer; font-family: var(--font-body); border: none; }
+input, textarea, select {
+  font-family: var(--font-body);
+  background: var(--bg3);
+  color: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  width: 100%;
+  font-size: 14px;
+  outline: none;
+  transition: border-color .2s;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--amber); }
+textarea { resize: vertical; min-height: 100px; line-height: 1.7; }
+a { color: var(--amber); text-decoration: none; }
+
+/* ============================================================
+   レイアウト
+============================================================ */
+.page { display: none; padding: 20px 16px; max-width: 480px; margin: 0 auto; }
+.page.active { display: block; animation: fadeIn .2s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.page-title {
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ============================================================
+   ボトムナビ
+============================================================ */
+.nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: var(--nav-h);
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 100;
+}
+.nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  transition: color .15s;
+  padding: 8px 0;
+}
+.nav-btn.active { color: var(--amber); }
+.nav-btn svg { width: 22px; height: 22px; }
+
+/* ============================================================
+   カード
+============================================================ */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.card:hover { border-color: var(--amber-dim); background: var(--bg3); }
+.card-title {
+  font-family: var(--font-head);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.card-meta {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+.badge-amber  { background: #3a2e10; color: var(--amber); }
+.badge-green  { background: #1a2e1e; color: #7ec98a; }
+.badge-muted  { background: var(--surface); color: var(--muted); }
+
+/* ============================================================
+   フォーム
+============================================================ */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: .03em;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity .15s, transform .1s;
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--amber); color: #1a1000; }
+.btn-primary:hover { opacity: .9; }
+.btn-ghost { background: var(--surface); color: var(--cream); }
+.btn-ghost:hover { background: var(--bg3); }
+.btn-danger { background: #3a1810; color: #e88a7a; }
+.btn-block { width: 100%; }
+
+/* ============================================================
+   読書ログカレンダー
+============================================================ */
+.calendar-wrap { margin-bottom: 24px; overflow-x: auto; }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  min-width: 280px;
+}
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--surface);
+  transition: background .2s;
+}
+.cal-cell.has-read { background: var(--amber-dim); }
+.cal-cell.has-read.level-2 { background: var(--amber); }
+.cal-month-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+/* ============================================================
+   詳細画面
+============================================================ */
+.detail-header {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-title {
+  font-family: var(--font-head);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.section-label {
+  font-size: 11px;
+  color: var(--amber);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  margin-top: 20px;
+}
+.memo-text {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #c8bfaf;
+  white-space: pre-wrap;
+  background: var(--bg3);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+/* フラッシュカード */
+.flashcard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.flashcard-q { font-size: 14px; font-weight: 500; margin-bottom: 10px; }
+.flashcard-a {
+  font-size: 13px;
+  color: #a89880;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: none;
+}
+.flashcard-a.open { display: block; }
+.flashcard-toggle {
+  font-size: 11px;
+  color: var(--amber);
+  background: none;
+  padding: 4px 0;
+  font-family: var(--font-body);
+}
+
+/* チャレンジ */
+.challenge-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.challenge-day {
+  min-width: 44px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber);
+  padding-top: 2px;
+}
+.challenge-text { font-size: 14px; line-height: 1.6; }
+.challenge-check {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+  transition: all .2s;
+  background: none;
+}
+.challenge-check.done {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+/* 長期目標 */
+.goal-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.goal-period {
+  font-size: 11px;
+  color: var(--amber);
+  font-weight: 700;
+  letter-spacing: .06em;
+  margin-bottom: 6px;
+}
+.goal-text { font-size: 14px; line-height: 1.6; }
+.progress-bar {
+  height: 4px;
+  background: var(--surface);
+  border-radius: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--amber);
+  border-radius: 2px;
+  transition: width .4s ease;
+}
+
+/* ============================================================
+   ステータス・ローディング
+============================================================ */
+.status-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: var(--amber);
+  color: #1a1000;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  padding: 10px;
+  z-index: 200;
+  transform: translateY(-100%);
+  transition: transform .25s;
+}
+.status-bar.show { transform: none; }
+.status-bar.error { background: var(--danger); color: #fff; }
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--muted);
+}
+.empty-state p { font-size: 14px; margin-top: 8px; }
+
+/* 設定画面 */
+.settings-section {
+  margin-bottom: 28px;
+}
+.settings-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: .06em;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+}
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.settings-row:last-child { border-bottom: none; }
+
+/* OCRアップロード */
+.upload-area {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  margin-bottom: 16px;
+}
+.upload-area:hover, .upload-area.drag { border-color: var(--amber); background: var(--bg3); }
+.upload-area p { font-size: 13px; color: var(--muted); margin-top: 8px; }
+
+/* タブ */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--bg3);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  transition: all .15s;
+}
+.tab-btn.active { background: var(--surface); color: var(--cream); }
+
+/* モーダル */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 300;
+  align-items: flex-end;
+  padding-bottom: var(--nav-h);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px 16px;
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp { from { transform: translateY(30px); opacity: 0; } }
+.modal-title {
+  font-family: var(--font-head);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ステータスバッジ */
+.status-icon { font-size: 32px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ステータスバー -->
+<div class="status-bar" id="statusBar"></div>
+
+<!-- ============================================================
+     画面①：本棚
+============================================================ -->
+<div class="page active" id="page-shelf">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <h1 style="font-family:var(--font-head);font-size:24px;font-weight:600;">読書ノート</h1>
+    <div style="font-size:12px;color:var(--muted);" id="shelfCount"></div>
+  </div>
+
+  <!-- 読書ログカレンダー -->
+  <div class="calendar-wrap">
+    <div class="cal-month-label" id="calLabel"></div>
+    <div class="calendar-grid" id="calGrid"></div>
+  </div>
+
+  <!-- 検索 -->
+  <div style="margin-bottom:16px;position:relative;">
+    <input type="search" id="searchInput" placeholder="タイトル・メモを検索..." style="padding-left:36px;">
+    <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.4;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  </div>
+
+  <!-- 本一覧 -->
+  <div id="bookList"></div>
+</div>
+
+<!-- ============================================================
+     画面②：本登録
+============================================================ -->
+<div class="page" id="page-add">
+  <div class="page-title">本を登録</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('manual')">手入力</button>
+    <button class="tab-btn" onclick="switchTab('ocr')">画像OCR</button>
+  </div>
+
+  <!-- 手入力タブ -->
+  <div id="tab-manual">
+    <div class="form-group">
+      <label class="form-label">タイトル *</label>
+      <input type="text" id="inputTitle" placeholder="本のタイトル">
+    </div>
+    <div class="form-group">
+      <label class="form-label">読書の目的・問い</label>
+      <input type="text" id="inputPurpose" placeholder="この本から何を得たいか">
+    </div>
+    <div class="form-group">
+      <label class="form-label">メモ</label>
+      <textarea id="inputMemo" placeholder="読書メモ・気づき・引用など"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">回答・アウトプット</label>
+      <textarea id="inputAnswer" placeholder="目的に対する回答・学び" style="min-height:70px;"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">モード</label>
+      <select id="inputMode">
+        <option>初回</option>
+        <option>通常</option>
+        <option>解答後</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveBook()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      保存する
+    </button>
+  </div>
+
+  <!-- OCRタブ -->
+  <div id="tab-ocr" style="display:none;">
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.5" style="margin:0 auto;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <p>画像・PDFをタップして選択</p>
+      <p style="font-size:11px;margin-top:4px;">JPEG / PNG / HEIC / PDF 対応</p>
+    </div>
+    <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none;" onchange="handleFileSelect(event)">
+    <div id="ocrPreview" style="display:none;">
+      <img id="previewImg" style="width:100%;border-radius:var(--radius);margin-bottom:12px;max-height:200px;object-fit:cover;">
+      <div class="form-group">
+        <label class="form-label">タイトル *</label>
+        <input type="text" id="ocrTitle" placeholder="本のタイトル">
+      </div>
+      <div class="form-group">
+        <label class="form-label">OCR結果（編集可）</label>
+        <textarea id="ocrResult" placeholder="Gemini APIで解析中..."></textarea>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveOcrBook()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     画面③：チャレンジ・目標
+============================================================ -->
+<div class="page" id="page-challenge">
+  <div class="page-title">目標 & チャレンジ</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchGoalTab('weekly')">7日間</button>
+    <button class="tab-btn" onclick="switchGoalTab('monthly')">月間</button>
+    <button class="tab-btn" onclick="switchGoalTab('longterm')">長期</button>
+  </div>
+
+  <!-- 7日間チャレンジ -->
+  <div id="goal-weekly">
+    <div id="challengeList"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:12px;" onclick="openGoalModal('weekly')">
+      + 新しいチャレンジを生成
+    </button>
+  </div>
+
+  <!-- 月間目標 -->
+  <div id="goal-monthly" style="display:none;">
+    <div id="monthlyList"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:12px;" onclick="openGoalModal('monthly')">
+      + 月間目標を追加
+    </button>
+  </div>
+
+  <!-- 長期目標 -->
+  <div id="goal-longterm" style="display:none;">
+    <div id="longtermList"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:12px;" onclick="openGoalModal('longterm')">
+      + 長期目標を追加
+    </button>
+  </div>
+</div>
+
+<!-- ============================================================
+     画面④：統計
+============================================================ -->
+<div class="page" id="page-stats">
+  <div class="page-title">読書統計</div>
+  <div id="statsContent"></div>
+</div>
+
+<!-- ============================================================
+     画面⑤：設定
+============================================================ -->
+<div class="page" id="page-settings">
+  <div class="page-title">設定</div>
+
+  <div class="settings-section">
+    <div class="settings-title">Gemini API</div>
+    <div class="form-group">
+      <label class="form-label">APIキー</label>
+      <input type="password" id="apiKeyInput" placeholder="AIza...">
+    </div>
+    <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-title">データ管理</div>
+    <div class="settings-row">
+      <span>データをエクスポート</span>
+      <button class="btn btn-ghost" style="padding:8px 14px;font-size:13px;" onclick="exportData()">JSON</button>
+    </div>
+    <div class="settings-row">
+      <span>データをインポート</span>
+      <button class="btn btn-ghost" style="padding:8px 14px;font-size:13px;" onclick="document.getElementById('importInput').click()">選択</button>
+      <input type="file" id="importInput" accept=".json" style="display:none;" onchange="importData(event)">
+    </div>
+    <div class="settings-row">
+      <span style="color:#e88a7a;">全データを削除</span>
+      <button class="btn btn-danger" style="padding:8px 14px;font-size:13px;" onclick="clearAllData()">削除</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-title">アプリ情報</div>
+    <div class="settings-row"><span>バージョン</span><span style="color:var(--muted);">1.0.0</span></div>
+    <div class="settings-row"><span>保存データ数</span><span style="color:var(--muted);" id="dataCount">-</span></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     詳細モーダル
+============================================================ -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" id="detailContent"></div>
+</div>
+
+<!-- 目標追加モーダル -->
+<div class="modal-overlay" id="goalModal">
+  <div class="modal">
+    <div class="modal-title" id="goalModalTitle">チャレンジを生成</div>
+    <div id="goalModalContent"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ボトムナビ
+============================================================ -->
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPage('shelf')" id="nav-shelf">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    本棚
+  </button>
+  <button class="nav-btn" onclick="showPage('add')" id="nav-add">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    登録
+  </button>
+  <button class="nav-btn" onclick="showPage('challenge')" id="nav-challenge">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    目標
+  </button>
+  <button class="nav-btn" onclick="showPage('stats')" id="nav-stats">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    統計
+  </button>
+  <button class="nav-btn" onclick="showPage('settings')" id="nav-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    設定
+  </button>
+</nav>
+
+<script>
+// ============================================================
+// === DB：localStorage操作 ===
+// ============================================================
+const DB = {
+  getSessions: () => JSON.parse(localStorage.getItem('sessions') || '[]'),
+  saveSessions: (data) => localStorage.setItem('sessions', JSON.stringify(data)),
+  getGoals: () => JSON.parse(localStorage.getItem('goals') || '[]'),
+  saveGoals: (data) => localStorage.setItem('goals', JSON.stringify(data)),
+  getApiKey: () => localStorage.getItem('gemini_api_key') || '',
+  saveApiKey: (k) => localStorage.setItem('gemini_api_key', k),
+};
+
+// ============================================================
+// === UI：画面遷移 ===
+// ============================================================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'shelf') renderShelf();
+  if (name === 'stats') renderStats();
+  if (name === 'challenge') renderChallenge();
+  if (name === 'settings') renderSettings();
+}
+
+// ============================================================
+// === UI：ステータス通知 ===
+// ============================================================
+let statusTimer;
+function showStatus(msg, isError = false) {
+  const bar = document.getElementById('statusBar');
+  bar.textContent = msg;
+  bar.className = 'status-bar show' + (isError ? ' error' : '');
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => bar.classList.remove('show'), 2500);
+}
+
+// ============================================================
+// === UI：本棚画面 ===
+// ============================================================
+function renderShelf() {
+  const sessions = DB.getSessions();
+  const query = document.getElementById('searchInput').value.toLowerCase();
+
+  // カレンダー
+  renderCalendar(sessions);
+
+  // フィルタ
+  const filtered = sessions.filter(s =>
+    !query || (s.タイトル + s.メモ + s.目的).toLowerCase().includes(query)
+  );
+
+  // 本単位でグループ化（最新セッション優先）
+  const bookMap = {};
+  filtered.forEach(s => {
+    if (!bookMap[s.book_id] || s.日付 > bookMap[s.book_id].日付) {
+      bookMap[s.book_id] = s;
+    }
+  });
+  const books = Object.values(bookMap).sort((a, b) => b.日付.localeCompare(a.日付));
+
+  document.getElementById('shelfCount').textContent = books.length + '冊';
+
+  const list = document.getElementById('bookList');
+  if (!books.length) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="status-icon">📚</div>
+      <p>${query ? '該当する本が見つかりません' : 'まだ登録されていません'}</p>
+    </div>`;
+    return;
+  }
+  list.innerHTML = books.map(s => {
+    const cnt = sessions.filter(x => x.book_id === s.book_id).length;
+    return `<div class="card" onclick="openDetail('${s.book_id}')">
+      <div class="card-title">${esc(s.タイトル)}</div>
+      <div class="card-meta">
+        <span>${s.日付}</span>
+        <span class="badge badge-amber">${esc(s.モード)}</span>
+        <span class="badge badge-muted">セッション ${cnt}回</span>
+      </div>
+      ${s.目的 ? `<div style="font-size:12px;color:var(--muted);margin-top:8px;">📌 ${esc(s.目的)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderCalendar(sessions) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const days = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+
+  const readDays = new Set(
+    sessions.filter(s => s.日付.startsWith(`${year}-${String(month+1).padStart(2,'0')}`))
+      .map(s => parseInt(s.日付.split('-')[2]))
+  );
+
+  document.getElementById('calLabel').textContent =
+    `${year}年${month+1}月の読書記録`;
+
+  let html = '';
+  for (let i = 0; i < firstDay; i++) html += '<div class="cal-cell"></div>';
+  for (let d = 1; d <= days; d++) {
+    const cls = readDays.has(d) ? 'cal-cell has-read' : 'cal-cell';
+    html += `<div class="${cls}" title="${month+1}/${d}"></div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+}
+
+document.getElementById('searchInput').addEventListener('input', renderShelf);
+
+// ============================================================
+// === UI：詳細モーダル ===
+// ============================================================
+function openDetail(bookId) {
+  const sessions = DB.getSessions();
+  const bookSessions = sessions.filter(s => s.book_id === bookId)
+    .sort((a, b) => b.日付.localeCompare(a.日付));
+  if (!bookSessions.length) return;
+
+  const latest = bookSessions[0];
+  const goals = DB.getGoals().filter(g => g.book_id === bookId);
+  const challenge = goals.find(g => g.type === 'weekly');
+
+  let html = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+      <div class="detail-title">${esc(latest.タイトル)}</div>
+      <button onclick="closeModal('detailModal')" style="background:none;color:var(--muted);font-size:20px;padding:4px;">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+      <span class="badge badge-amber">${esc(latest.モード)}</span>
+      <span class="badge badge-muted">${latest.日付}</span>
+      <span class="badge badge-muted">セッション ${bookSessions.length}回</span>
+    </div>`;
+
+  if (latest.目的) html += `
+    <div class="section-label">読書の目的</div>
+    <div class="memo-text">${esc(latest.目的)}</div>`;
+
+  if (latest.メモ) html += `
+    <div class="section-label">メモ</div>
+    <div class="memo-text">${esc(latest.メモ)}</div>`;
+
+  if (latest.回答) html += `
+    <div class="section-label">アウトプット</div>
+    <div class="memo-text">${esc(latest.回答)}</div>`;
+
+  // フラッシュカード
+  const flashGoal = goals.find(g => g.type === 'flashcard');
+  if (flashGoal && flashGoal.cards) {
+    html += `<div class="section-label">フラッシュカード</div>`;
+    html += flashGoal.cards.map((c, i) => `
+      <div class="flashcard">
+        <div class="flashcard-q">Q. ${esc(c.q)}</div>
+        <button class="flashcard-toggle" onclick="toggleCard(${i})">答えを見る</button>
+        <div class="flashcard-a" id="fc-${i}">A. ${esc(c.a)}</div>
+      </div>`).join('');
+  }
+
+  // 7日間チャレンジ
+  if (challenge && challenge.items) {
+    html += `<div class="section-label">7日間チャレンジ</div>`;
+    html += challenge.items.map((item, i) => `
+      <div class="challenge-item">
+        <button class="challenge-check ${item.done ? 'done' : ''}"
+          onclick="toggleChallenge('${bookId}', ${i})"></button>
+        <div>
+          <div class="challenge-day">Day ${i+1}</div>
+          <div class="challenge-text">${esc(item.text)}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // アクションボタン
+  html += `
+    <div style="margin-top:20px;display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-ghost btn-block" onclick="generateFlashcards('${bookId}')">
+        フラッシュカードを生成 (Gemini)
+      </button>
+      <button class="btn btn-ghost btn-block" onclick="generateChallenge('${bookId}')">
+        7日間チャレンジを生成 (Gemini)
+      </button>
+      <button class="btn btn-ghost btn-block" onclick="openAddSession('${bookId}', '${esc(latest.タイトル)}')">
+        + セッションを追加
+      </button>
+    </div>`;
+
+  document.getElementById('detailContent').innerHTML = html;
+  document.getElementById('detailModal').classList.add('open');
+}
+
+function toggleCard(i) {
+  const el = document.getElementById('fc-' + i);
+  el.classList.toggle('open');
+}
+
+function toggleChallenge(bookId, idx) {
+  const goals = DB.getGoals();
+  const g = goals.find(g => g.book_id === bookId && g.type === 'weekly');
+  if (!g) return;
+  g.items[idx].done = !g.items[idx].done;
+  DB.saveGoals(goals);
+  openDetail(bookId); // 再描画
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// モーダル外クリックで閉じる
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ============================================================
+// === UI：本の登録 ===
+// ============================================================
+function switchTab(tab) {
+  document.getElementById('tab-manual').style.display = tab === 'manual' ? 'block' : 'none';
+  document.getElementById('tab-ocr').style.display = tab === 'ocr' ? 'block' : 'none';
+  document.querySelectorAll('#page-add .tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'manual') || (i === 1 && tab === 'ocr'));
+  });
+}
+
+function saveBook() {
+  const title = document.getElementById('inputTitle').value.trim();
+  if (!title) { showStatus('タイトルを入力してください', true); return; }
+
+  const sessions = DB.getSessions();
+  // 同タイトルのbook_idを引き継ぐ
+  const existing = sessions.find(s => s.タイトル === title);
+  const bookId = existing ? existing.book_id : randomId();
+
+  sessions.push({
+    session_id: randomId(),
+    日付: today(),
+    book_id: bookId,
+    タイトル: title,
+    目的: document.getElementById('inputPurpose').value.trim(),
+    メモ: document.getElementById('inputMemo').value.trim(),
+    回答: document.getElementById('inputAnswer').value.trim(),
+    モード: document.getElementById('inputMode').value,
+  });
+  DB.saveSessions(sessions);
+
+  // フォームリセット
+  ['inputTitle','inputPurpose','inputMemo','inputAnswer'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  showStatus('登録しました！');
+  showPage('shelf');
+}
+
+// セッション追加（詳細から）
+function openAddSession(bookId, title) {
+  closeModal('detailModal');
+  document.getElementById('inputTitle').value = title;
+  showPage('add');
+}
+
+// ============================================================
+// === OCR処理 ===
+// ============================================================
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    document.getElementById('ocrPreview').style.display = 'block';
+    document.getElementById('uploadArea').style.display = 'none';
+
+    // 画像プレビュー（PDF以外）
+    if (file.type.startsWith('image/')) {
+      document.getElementById('previewImg').src = e.target.result;
+      document.getElementById('previewImg').style.display = 'block';
+    } else {
+      document.getElementById('previewImg').style.display = 'none';
+    }
+
+    document.getElementById('ocrResult').value = '解析中...';
+
+    const apiKey = DB.getApiKey();
+    if (!apiKey) {
+      showStatus('設定画面でGemini APIキーを設定してください', true);
+      document.getElementById('ocrResult').value = '';
+      return;
+    }
+
+    try {
+      const base64 = e.target.result.split(',')[1];
+      const mimeType = file.type || 'image/jpeg';
+      const text = await callGeminiVision(apiKey, base64, mimeType);
+      document.getElementById('ocrResult').value = text;
+    } catch (err) {
+      showStatus('OCRに失敗しました: ' + err.message, true);
+      document.getElementById('ocrResult').value = '';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveOcrBook() {
+  const title = document.getElementById('ocrTitle').value.trim();
+  if (!title) { showStatus('タイトルを入力してください', true); return; }
+
+  const sessions = DB.getSessions();
+  const existing = sessions.find(s => s.タイトル === title);
+  const bookId = existing ? existing.book_id : randomId();
+
+  sessions.push({
+    session_id: randomId(),
+    日付: today(),
+    book_id: bookId,
+    タイトル: title,
+    目的: '',
+    メモ: document.getElementById('ocrResult').value.trim(),
+    回答: '',
+    モード: '初回',
+  });
+  DB.saveSessions(sessions);
+
+  document.getElementById('ocrTitle').value = '';
+  document.getElementById('ocrResult').value = '';
+  document.getElementById('ocrPreview').style.display = 'none';
+  document.getElementById('uploadArea').style.display = 'block';
+  document.getElementById('fileInput').value = '';
+
+  showStatus('登録しました！');
+  showPage('shelf');
+}
+
+// ドラッグ＆ドロップ
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('fileInput').files = dt.files;
+    handleFileSelect({ target: { files: [file] } });
+  }
+});
+
+// ============================================================
+// === Gemini API呼び出し ===
+// ============================================================
+async function callGeminiVision(apiKey, base64, mimeType) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [
+        { inlineData: { mimeType, data: base64 } },
+        { text: 'この画像は読書メモや本のページです。書かれているテキストをすべて正確に読み取ってください。手書きの場合も可能な限り読み取ってください。テキスト以外の説明は不要です。' }
+      ]}],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+    })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+async function callGemini(apiKey, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+    })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// ============================================================
+// === フラッシュカード生成 ===
+// ============================================================
+async function generateFlashcards(bookId) {
+  const apiKey = DB.getApiKey();
+  if (!apiKey) { showStatus('設定画面でAPIキーを設定してください', true); return; }
+
+  const sessions = DB.getSessions().filter(s => s.book_id === bookId);
+  const memo = sessions.map(s => s.メモ).filter(Boolean).join('\n\n');
+  if (!memo) { showStatus('メモがありません', true); return; }
+
+  showStatus('フラッシュカードを生成中...');
+  try {
+    const text = await callGemini(apiKey,
+      `以下の読書メモから重要な概念のフラッシュカードを5〜10枚作成してください。\nJSON配列のみを返してください（他の文字は不要）。形式: [{"q":"質問","a":"答え"}]\n\n${memo}`
+    );
+    const clean = text.replace(/```json|```/g, '').trim();
+    const cards = JSON.parse(clean);
+
+    const goals = DB.getGoals().filter(g => !(g.book_id === bookId && g.type === 'flashcard'));
+    goals.push({ book_id: bookId, type: 'flashcard', cards, created: today() });
+    DB.saveGoals(goals);
+
+    showStatus(`${cards.length}枚のカードを生成しました！`);
+    openDetail(bookId);
+  } catch (e) {
+    showStatus('生成に失敗しました: ' + e.message, true);
+  }
+}
+
+// ============================================================
+// === 7日間チャレンジ生成 ===
+// ============================================================
+async function generateChallenge(bookId) {
+  const apiKey = DB.getApiKey();
+  if (!apiKey) { showStatus('設定画面でAPIキーを設定してください', true); return; }
+
+  const sessions = DB.getSessions().filter(s => s.book_id === bookId);
+  const latest = sessions[sessions.length - 1];
+  const memo = sessions.map(s => s.メモ).filter(Boolean).join('\n\n');
+  if (!memo) { showStatus('メモがありません', true); return; }
+
+  showStatus('チャレンジを生成中...');
+  try {
+    const text = await callGemini(apiKey,
+      `以下の読書メモと目的をもとに、7日間の具体的なアクションチャレンジを作成してください。\nJSON配列のみを返してください（他の文字は不要）。形式: [{"day":1,"text":"アクション内容"},...]\n\n目的: ${latest?.目的 || ''}\nメモ: ${memo}`
+    );
+    const clean = text.replace(/```json|```/g, '').trim();
+    const items = JSON.parse(clean).map(i => ({ ...i, done: false }));
+
+    const goals = DB.getGoals().filter(g => !(g.book_id === bookId && g.type === 'weekly'));
+    goals.push({ book_id: bookId, type: 'weekly', items, created: today() });
+    DB.saveGoals(goals);
+
+    showStatus('チャレンジを生成しました！');
+    openDetail(bookId);
+  } catch (e) {
+    showStatus('生成に失敗しました: ' + e.message, true);
+  }
+}
+
+// ============================================================
+// === 目標画面 ===
+// ============================================================
+function switchGoalTab(tab) {
+  ['weekly','monthly','longterm'].forEach(t => {
+    document.getElementById('goal-' + t).style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('#page-challenge .tab-btn').forEach((b, i) => {
+    b.classList.toggle('active',
+      (i===0 && tab==='weekly') || (i===1 && tab==='monthly') || (i===2 && tab==='longterm'));
+  });
+}
+
+function renderChallenge() {
+  const goals = DB.getGoals();
+  const sessions = DB.getSessions();
+
+  // 7日間チャレンジ一覧
+  const weekly = goals.filter(g => g.type === 'weekly');
+  document.getElementById('challengeList').innerHTML = weekly.length
+    ? weekly.map(g => {
+        const s = sessions.find(s => s.book_id === g.book_id);
+        const done = g.items.filter(i => i.done).length;
+        return `<div class="goal-card" onclick="openDetail('${g.book_id}')">
+          <div class="goal-period">7日間チャレンジ</div>
+          <div class="goal-text">${esc(s?.タイトル || g.book_id)}</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${Math.round(done/g.items.length*100)}%"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;">${done} / ${g.items.length} 完了</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>チャレンジがありません<br>本棚から本を選んで生成してください</p></div>';
+
+  // 月間・長期目標
+  const monthly = goals.filter(g => g.type === 'monthly');
+  const longterm = goals.filter(g => g.type === 'longterm');
+
+  document.getElementById('monthlyList').innerHTML = monthly.length
+    ? monthly.map(g => `<div class="goal-card">
+        <div class="goal-period">月間目標 · ${g.period || ''}</div>
+        <div class="goal-text">${esc(g.text)}</div>
+      </div>`).join('')
+    : '<div class="empty-state"><p>月間目標がありません</p></div>';
+
+  document.getElementById('longtermList').innerHTML = longterm.length
+    ? longterm.map(g => `<div class="goal-card">
+        <div class="goal-period">${g.period} 目標</div>
+        <div class="goal-text">${esc(g.text)}</div>
+        ${g.deadline ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">期限: ${g.deadline}</div>` : ''}
+      </div>`).join('')
+    : '<div class="empty-state"><p>長期目標がありません</p></div>';
+}
+
+function openGoalModal(type) {
+  const titles = { weekly: '7日間チャレンジを生成', monthly: '月間目標を追加', longterm: '長期目標を追加' };
+  document.getElementById('goalModalTitle').textContent = titles[type];
+
+  const sessions = DB.getSessions();
+  const books = [...new Map(sessions.map(s => [s.book_id, s])).values()];
+
+  let html = '';
+  if (type === 'weekly') {
+    html = `
+      <div class="form-group">
+        <label class="form-label">対象の本</label>
+        <select id="goalBookSelect">
+          ${books.map(b => `<option value="${b.book_id}">${esc(b.タイトル)}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="generateChallengeFromModal()">Geminiで生成</button>`;
+  } else {
+    const periods = type === 'monthly'
+      ? ['今月','来月']
+      : ['1ヶ月','3ヶ月','半年','1年'];
+    html = `
+      <div class="form-group">
+        <label class="form-label">期間</label>
+        <select id="goalPeriod">${periods.map(p => `<option>${p}</option>`).join('')}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">目標内容</label>
+        <textarea id="goalText" placeholder="達成したいこと"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">期限日（任意）</label>
+        <input type="date" id="goalDeadline">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="saveGoal('${type}')">保存する</button>`;
+  }
+  document.getElementById('goalModalContent').innerHTML = html;
+  document.getElementById('goalModal').classList.add('open');
+}
+
+async function generateChallengeFromModal() {
+  const bookId = document.getElementById('goalBookSelect').value;
+  closeModal('goalModal');
+  await generateChallenge(bookId);
+  renderChallenge();
+}
+
+function saveGoal(type) {
+  const text = document.getElementById('goalText').value.trim();
+  if (!text) { showStatus('目標内容を入力してください', true); return; }
+  const goals = DB.getGoals();
+  goals.push({
+    type,
+    text,
+    period: document.getElementById('goalPeriod').value,
+    deadline: document.getElementById('goalDeadline')?.value || '',
+    created: today(),
+  });
+  DB.saveGoals(goals);
+  closeModal('goalModal');
+  showStatus('目標を保存しました！');
+  renderChallenge();
+}
+
+// ============================================================
+// === 統計画面 ===
+// ============================================================
+function renderStats() {
+  const sessions = DB.getSessions();
+  if (!sessions.length) {
+    document.getElementById('statsContent').innerHTML =
+      '<div class="empty-state"><p>まだデータがありません</p></div>';
+    return;
+  }
+
+  const books = new Set(sessions.map(s => s.book_id)).size;
+  const modes = {};
+  sessions.forEach(s => { modes[s.モード] = (modes[s.モード] || 0) + 1; });
+
+  // 月別集計（直近6ヶ月）
+  const monthly = {};
+  sessions.forEach(s => {
+    const m = s.日付.slice(0, 7);
+    monthly[m] = (monthly[m] || 0) + 1;
+  });
+  const months = Object.entries(monthly).sort().slice(-6);
+  const max = Math.max(...months.map(m => m[1]));
+
+  let html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+      <div class="goal-card" style="text-align:center;">
+        <div style="font-size:32px;font-family:var(--font-head);color:var(--amber);">${books}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">冊</div>
+      </div>
+      <div class="goal-card" style="text-align:center;">
+        <div style="font-size:32px;font-family:var(--font-head);color:var(--amber);">${sessions.length}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">セッション</div>
+      </div>
+    </div>
+
+    <div class="section-label">月別セッション数</div>
+    <div style="margin-bottom:20px;">
+      ${months.map(([m, cnt]) => `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <div style="font-size:12px;color:var(--muted);min-width:56px;">${m.slice(5)}月</div>
+          <div style="flex:1;background:var(--surface);border-radius:3px;height:16px;overflow:hidden;">
+            <div style="width:${Math.round(cnt/max*100)}%;height:100%;background:var(--amber-dim);border-radius:3px;transition:width .4s;"></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);min-width:24px;text-align:right;">${cnt}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="section-label">モード別</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+      ${Object.entries(modes).map(([k, v]) =>
+        `<div class="goal-card" style="flex:1;min-width:80px;text-align:center;padding:10px;">
+          <div style="font-size:20px;font-weight:700;color:var(--amber);">${v}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${esc(k)}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="section-label">最近の読書（5件）</div>
+    ${sessions.slice(-5).reverse().map(s => `
+      <div class="card" onclick="openDetail('${s.book_id}')">
+        <div class="card-title">${esc(s.タイトル)}</div>
+        <div class="card-meta"><span>${s.日付}</span><span class="badge badge-muted">${esc(s.モード)}</span></div>
+      </div>`).join('')}`;
+
+  document.getElementById('statsContent').innerHTML = html;
+}
+
+// ============================================================
+// === 設定画面 ===
+// ============================================================
+function renderSettings() {
+  const key = DB.getApiKey();
+  if (key) document.getElementById('apiKeyInput').value = key;
+  document.getElementById('dataCount').textContent =
+    DB.getSessions().length + '件';
+}
+
+function saveApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) { showStatus('APIキーを入力してください', true); return; }
+  DB.saveApiKey(key);
+  showStatus('APIキーを保存しました！');
+}
+
+function exportData() {
+  const data = {
+    sessions: DB.getSessions(),
+    goals: DB.getGoals(),
+    exported: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `reading-notes-${today()}.json`;
+  a.click();
+  showStatus('エクスポートしました！');
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.sessions) DB.saveSessions(data.sessions);
+      if (data.goals) DB.saveGoals(data.goals);
+      showStatus(`インポート完了（${data.sessions?.length || 0}件）`);
+      renderSettings();
+    } catch {
+      showStatus('インポートに失敗しました', true);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function clearAllData() {
+  if (!confirm('すべてのデータを削除します。この操作は元に戻せません。')) return;
+  localStorage.removeItem('sessions');
+  localStorage.removeItem('goals');
+  showStatus('データを削除しました');
+  renderSettings();
+  renderShelf();
+}
+
+// ============================================================
+// === ユーティリティ ===
+// ============================================================
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+function randomId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// === 初期化 ===
+// ============================================================
+renderShelf();
+</script>
+</body>
+</html>

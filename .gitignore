@@ -1,0 +1,11 @@
+# データファイル（個人データのため除外）
+mcp/books.json
+
+# Mac
+.DS_Store
+
+# Excel
+*.xlsx
+
+# その他
+old/

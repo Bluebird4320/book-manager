@@ -1,0 +1,9 @@
+[project]
+name = "book-manager-mcp"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=3.1.1",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.26.0",
+]
