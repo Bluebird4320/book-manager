@@ -1656,30 +1656,21 @@ async function pickerCallback(data) {
   showStatus('Google ドライブからファイルを取得中...');
 
   try {
-    // ファイルをBlobで取得（Drive API v3の正しい方法）
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': mimeType
-        }
-      }
+    // Drive API v2でメタデータ取得（downloadUrlが含まれる）
+    const metaRes = await fetch(
+      `https://www.googleapis.com/drive/v2/files/${fileId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
+    const meta = await metaRes.json();
+    const downloadUrl = meta.downloadUrl || meta.exportLinks?.['image/jpeg'];
 
-    if (res.status === 403) {
-      // 共有ドライブの場合
-      const res2 = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true&acknowledgeAbuse=true`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-      );
-      if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
-      const blob2 = await res2.blob();
-      processBlob(blob2, mimeType, fileName);
-      return;
-    }
+    if (!downloadUrl) throw new Error('ダウンロードURLが取得できませんでした');
 
+    const res = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const blob = await res.blob();
     processBlob(blob, mimeType, fileName);
   } catch (err) {
