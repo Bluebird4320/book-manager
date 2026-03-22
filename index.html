@@ -472,6 +472,19 @@ a { color: var(--amber); text-decoration: none; }
 }
 .settings-row:last-child { border-bottom: none; }
 
+/* OCRスピナー */
+#ocrSpinner { display:none; text-align:center; padding:12px 0 4px; }
+#ocrSpinner .spinner {
+  width:28px; height:28px;
+  border:3px solid var(--border);
+  border-top-color:var(--amber);
+  border-radius:50%;
+  animation:spin .8s linear infinite;
+  margin:0 auto 8px;
+}
+#ocrSpinner p { font-size:12px; color:var(--muted); }
+@keyframes spin { to { transform:rotate(360deg); } }
+
 /* OCRアップロード */
 .upload-area {
   border: 2px dashed var(--border);
@@ -634,6 +647,7 @@ a { color: var(--amber); text-decoration: none; }
     </div>
     <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none;" onchange="handleFileSelect(event)">
     <div id="ocrPreview" style="display:none;">
+      <div id="ocrSpinner"><div class="spinner"></div><p>Gemini APIで解析中... しばらくお待ちください</p></div>
       <img id="previewImg" style="width:100%;border-radius:var(--radius);margin-bottom:12px;max-height:200px;object-fit:cover;">
       <div class="form-group">
         <label class="form-label">タイトル *</label>
@@ -641,7 +655,7 @@ a { color: var(--amber); text-decoration: none; }
       </div>
       <div class="form-group">
         <label class="form-label">OCR結果（編集可）</label>
-        <textarea id="ocrResult" placeholder="Gemini APIで解析中..."></textarea>
+        <textarea id="ocrResult" placeholder="Gemini APIで解析中... しばらくお待ちください"></textarea>
       </div>
       <button class="btn btn-primary btn-block" onclick="saveOcrBook()">保存する</button>
     </div>
@@ -1040,6 +1054,26 @@ function openAddSession(bookId, title) {
 // ============================================================
 // === OCR処理 ===
 // ============================================================
+
+function showOcrSpinner() { document.getElementById('ocrSpinner').style.display = 'block'; }
+function hideOcrSpinner() { document.getElementById('ocrSpinner').style.display = 'none'; }
+
+function resizeImageToBase64(dataUrl, maxSize = 1200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.src = dataUrl;
+  });
+}
+
 function handleFileSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -1048,6 +1082,7 @@ function handleFileSelect(event) {
   reader.onload = async (e) => {
     document.getElementById('ocrPreview').style.display = 'block';
     document.getElementById('uploadArea').style.display = 'none';
+    showOcrSpinner();
 
     // 画像プレビュー（PDF以外）
     if (file.type.startsWith('image/')) {
@@ -1057,23 +1092,29 @@ function handleFileSelect(event) {
       document.getElementById('previewImg').style.display = 'none';
     }
 
-    document.getElementById('ocrResult').value = '解析中...';
-
     const apiKey = DB.getApiKey();
     if (!apiKey) {
+      hideOcrSpinner();
       showStatus('設定画面でGemini APIキーを設定してください', true);
-      document.getElementById('ocrResult').value = '';
       return;
     }
 
     try {
-      const base64 = e.target.result.split(',')[1];
-      const mimeType = file.type || 'image/jpeg';
+      let base64, mimeType;
+      if (file.type.startsWith('image/')) {
+        base64 = await resizeImageToBase64(e.target.result);
+        mimeType = 'image/jpeg';
+      } else {
+        base64 = e.target.result.split(',')[1];
+        mimeType = file.type || 'application/pdf';
+      }
       const text = await callGeminiVision(apiKey, base64, mimeType);
       document.getElementById('ocrResult').value = text;
     } catch (err) {
       showStatus('OCRに失敗しました: ' + err.message, true);
       document.getElementById('ocrResult').value = '';
+    } finally {
+      hideOcrSpinner();
     }
   };
   reader.readAsDataURL(file);
@@ -1575,11 +1616,10 @@ async function pickerCallback(data) {
     const blob = await res.blob();
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const base64 = e.target.result.split(',')[1];
-
       // プレビュー表示
       document.getElementById('ocrPreview').style.display = 'block';
       document.getElementById('uploadArea').style.display = 'none';
+      showOcrSpinner();
       if (mimeType.startsWith('image/')) {
         document.getElementById('previewImg').src = e.target.result;
         document.getElementById('previewImg').style.display = 'block';
@@ -1593,22 +1633,30 @@ async function pickerCallback(data) {
         document.getElementById('ocrTitle').value = baseName;
       }
 
-      document.getElementById('ocrResult').value = '解析中...';
-
       const apiKey = DB.getApiKey();
       if (!apiKey) {
+        hideOcrSpinner();
         showStatus('設定画面でGemini APIキーを設定してください', true);
-        document.getElementById('ocrResult').value = '';
         return;
       }
 
       try {
-        const text = await callGeminiVision(apiKey, base64, mimeType);
+        let base64, resolvedMime;
+        if (mimeType.startsWith('image/')) {
+          base64 = await resizeImageToBase64(e.target.result);
+          resolvedMime = 'image/jpeg';
+        } else {
+          base64 = e.target.result.split(',')[1];
+          resolvedMime = mimeType;
+        }
+        const text = await callGeminiVision(apiKey, base64, resolvedMime);
         document.getElementById('ocrResult').value = text;
         showStatus('OCR完了！');
       } catch (err) {
         showStatus('OCRに失敗しました: ' + err.message, true);
         document.getElementById('ocrResult').value = '';
+      } finally {
+        hideOcrSpinner();
       }
     };
     reader.readAsDataURL(blob);
