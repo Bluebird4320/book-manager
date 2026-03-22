@@ -553,8 +553,6 @@ a { color: var(--amber); text-decoration: none; }
 /* ステータスバッジ */
 .status-icon { font-size: 32px; margin-bottom: 12px; }
 </style>
-<script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
 
@@ -633,10 +631,15 @@ a { color: var(--amber); text-decoration: none; }
 
   <!-- OCRタブ -->
   <div id="tab-ocr" style="display:none;">
-    <button class="btn btn-ghost btn-block" onclick="window.open('https://drive.google.com/drive/folders/1K450s27GlW3DI9fmkno21sWSg9EA1olL', '_blank')" style="gap:10px;margin-bottom:16px;">
+    <button class="btn btn-ghost btn-block" onclick="window.open('https://drive.google.com/drive/folders/1K450s27GlW3DI9fmkno21sWSg9EA1olL', '_blank')" style="gap:10px;margin-bottom:10px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#4285F4"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="white" font-family="sans-serif">G</text></svg>
       Googleドライブを開く
     </button>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">ドライブで画像を右クリック →「リンクをコピー」→ 下の欄に貼り付け</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+      <input type="url" id="driveUrlInput" placeholder="Google Driveのファイルリンクをここにペースト" style="font-size:13px;">
+      <button class="btn btn-primary btn-block" onclick="analyzeFromDriveUrl(document.getElementById('driveUrlInput').value)">OCR解析する</button>
+    </div>
     <div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:12px;">または</div>
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.5" style="margin:0 auto;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -1527,117 +1530,35 @@ function esc(str) {
 // ============================================================
 // === Google Picker API ===
 // ============================================================
-const GOOGLE_CLIENT_ID = '484047766105-19lmapvraoaf9lb4jnb8h906rkufmit5.apps.googleusercontent.com';
-const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
-let pickerApiLoaded = false;
-let gisLoaded = false;
-let tokenClient = null;
-let accessToken = null;
-
-function loadPickerApi() {
-  gapi.load('picker', () => { pickerApiLoaded = true; });
-}
-
-function initGis() {
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GOOGLE_SCOPE,
-    callback: (tokenResponse) => {
-      if (tokenResponse.error) {
-        showStatus('Google認証に失敗しました', true);
-        return;
-      }
-      accessToken = tokenResponse.access_token;
-      createPicker();
-    },
-  });
-  gisLoaded = true;
-}
-
-function openGooglePicker() {
-  if (!pickerApiLoaded || !gisLoaded) {
-    gapi.load('picker', () => {
-      pickerApiLoaded = true;
-      initGis();
-      requestToken();
-    });
+// ============================================================
+// === Drive URL解析 ===
+// ============================================================
+async function analyzeFromDriveUrl(url) {
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) {
+    showStatus('正しいGoogle DriveのURLを入力してください', true);
     return;
   }
-  requestToken();
-}
-
-function requestToken() {
-  if (!tokenClient) initGis();
-  if (accessToken) {
-    createPicker();
-  } else {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  }
-}
-
-function createPicker() {
-  if (!pickerApiLoaded || !accessToken) return;
-
-  const view = new google.picker.DocsView()
-    .setIncludeFolders(false)
-    .setMimeTypes('image/jpeg,image/png,image/heic,image/webp,application/pdf');
-
-  const picker = new google.picker.PickerBuilder()
-    .addView(view)
-    .setOAuthToken(accessToken)
-    .setTitle('読書メモ・写真を選択')
-    .setCallback(pickerCallback)
-    .build();
-
-  picker.setVisible(true);
-}
-
-async function pickerCallback(data) {
-  if (data.action !== google.picker.Action.PICKED) return;
-  const file = data.docs[0];
-  const fileId = file.id;
-  const mimeType = file.mimeType;
-  const name = file.name;
-
-  document.getElementById('ocrPreview').style.display = 'block';
-  document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('previewImg').style.display = 'none';
-  document.getElementById('ocrTitle').value =
-    document.getElementById('ocrTitle').value || name.replace(/\.[^.]+$/, '');
-  document.getElementById('ocrResult').value = '';
-  showOcrSpinner();
+  const fileId = match[1];
 
   const apiKey = DB.getApiKey();
   if (!apiKey) {
     showStatus('設定画面でAPIキーを設定してください', true);
-    hideOcrSpinner();
     return;
   }
 
+  const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+  showOcrSpinner();
+  document.getElementById('ocrResult').value = '解析中...';
+  document.getElementById('ocrPreview').style.display = 'block';
+  document.getElementById('uploadArea').style.display = 'none';
+  document.getElementById('previewImg').style.display = 'none';
+
   try {
-    // gapi.client経由でバイナリ取得（CORSを回避）
-    await new Promise((resolve) => gapi.load('client', resolve));
-    gapi.client.setToken({ access_token: accessToken });
-
-    const response = await gapi.client.request({
-      path: `https://www.googleapis.com/drive/v3/files/${fileId}`,
-      params: { alt: 'media' },
-    });
-
-    // レスポンスをBase64に変換
-    const base64 = btoa(
-      Array.from(new Uint8Array(
-        response.body.split('').map(c => c.charCodeAt(0))
-      ), b => String.fromCharCode(b)).join('')
+    const text = await callGemini(apiKey,
+      `以下のURLにある画像（読書メモや本のページ）のテキストをすべて正確に読み取ってください。テキスト以外の説明は不要です。\n\nURL: ${driveUrl}`
     );
-
-    // プレビュー表示
-    const dataUrl = `data:${mimeType};base64,${base64}`;
-    document.getElementById('previewImg').src = dataUrl;
-    document.getElementById('previewImg').style.display = 'block';
-
-    // Gemini Vision APIで解析
-    const text = await callGeminiVision(apiKey, base64, mimeType);
     document.getElementById('ocrResult').value = text;
     showStatus('OCR完了！');
   } catch (err) {
@@ -1647,12 +1568,6 @@ async function pickerCallback(data) {
     hideOcrSpinner();
   }
 }
-
-// ページ読み込み後にGISを初期化
-window.addEventListener('load', () => {
-  if (typeof gapi !== 'undefined') loadPickerApi();
-  if (typeof google !== 'undefined' && google.accounts) initGis();
-});
 renderShelf();
 </script>
 </body>
