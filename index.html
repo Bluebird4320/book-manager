@@ -1608,7 +1608,7 @@ async function pickerCallback(data) {
   try {
     // ファイルをバイナリで取得
     const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1640,6 +1640,7 @@ async function pickerCallback(data) {
         return;
       }
 
+      document.getElementById('ocrResult').value = 'Gemini APIで解析中...';
       try {
         let base64, resolvedMime;
         if (mimeType.startsWith('image/')) {
