@@ -635,7 +635,7 @@ a { color: var(--amber); text-decoration: none; }
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#4285F4"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="white" font-family="sans-serif">G</text></svg>
       Googleドライブを開く
     </button>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">ドライブで画像を右クリック →「リンクをコピー」→ 下の欄に貼り付け</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">画像を右クリック →「リンクをコピー」→ 下の入力欄に貼り付けてOCR解析</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
       <input type="url" id="driveUrlInput" placeholder="Google Driveのファイルリンクをここにペースト" style="font-size:13px;">
       <button class="btn btn-primary btn-block" onclick="analyzeFromDriveUrl(document.getElementById('driveUrlInput').value)">OCR解析する</button>
