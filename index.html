@@ -631,6 +631,14 @@ a { color: var(--amber); text-decoration: none; }
 
   <!-- OCRタブ -->
   <div id="tab-ocr" style="display:none;">
+    <button class="btn btn-ghost btn-block"
+      onclick="window.open('https://drive.google.com', '_blank')"
+      style="gap:10px;margin-bottom:12px;">
+      Googleドライブを開く
+    </button>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      ドライブでファイルを右クリック →「リンクをコピー」→ 下の欄に貼り付け
+    </p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
       <input type="url" id="driveUrlInput" placeholder="Google DriveのファイルURLを貼り付け" style="font-size:13px;">
       <button class="btn btn-primary btn-block" onclick="analyzeFromDriveUrl(document.getElementById('driveUrlInput').value)">OCR解析する</button>
