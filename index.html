@@ -630,17 +630,13 @@ a { color: var(--amber); text-decoration: none; }
   </div>
 
   <!-- OCRタブ -->
+  <!-- [修正] URL入力欄・OCR解析ボタン・「または」区切りを削除。ドライブ→DL→アップロードの導線に整理 -->
   <div id="tab-ocr" style="display:none;">
     <button class="btn btn-ghost btn-block" onclick="window.open('https://drive.google.com/drive/folders/1K450s27GlW3DI9fmkno21sWSg9EA1olL', '_blank')" style="gap:10px;margin-bottom:10px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#4285F4"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="white" font-family="sans-serif">G</text></svg>
       Googleドライブを開く
     </button>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">画像を右クリック →「リンクをコピー」→ 下の入力欄に貼り付けてOCR解析</p>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-      <input type="url" id="driveUrlInput" placeholder="Google Driveのファイルリンクをここにペースト" style="font-size:13px;">
-      <button class="btn btn-primary btn-block" onclick="analyzeFromDriveUrl(document.getElementById('driveUrlInput').value)">OCR解析する</button>
-    </div>
-    <div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:12px;">または</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">ドライブから画像をダウンロードして下からアップロード</p>
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.5" style="margin:0 auto;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       <p>端末から画像・PDFを選択</p>
@@ -1527,47 +1523,7 @@ function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ============================================================
-// === Google Picker API ===
-// ============================================================
-// ============================================================
-// === Drive URL解析 ===
-// ============================================================
-async function analyzeFromDriveUrl(url) {
-  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (!match) {
-    showStatus('正しいGoogle DriveのURLを入力してください', true);
-    return;
-  }
-  const fileId = match[1];
-
-  const apiKey = DB.getApiKey();
-  if (!apiKey) {
-    showStatus('設定画面でAPIキーを設定してください', true);
-    return;
-  }
-
-  const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-
-  showOcrSpinner();
-  document.getElementById('ocrResult').value = '解析中...';
-  document.getElementById('ocrPreview').style.display = 'block';
-  document.getElementById('uploadArea').style.display = 'none';
-  document.getElementById('previewImg').style.display = 'none';
-
-  try {
-    const text = await callGemini(apiKey,
-      `以下のURLにある画像（読書メモや本のページ）のテキストをすべて正確に読み取ってください。テキスト以外の説明は不要です。\n\nURL: ${driveUrl}`
-    );
-    document.getElementById('ocrResult').value = text;
-    showStatus('OCR完了！');
-  } catch (err) {
-    showStatus('OCRに失敗しました: ' + err.message, true);
-    document.getElementById('ocrResult').value = '';
-  } finally {
-    hideOcrSpinner();
-  }
-}
+// [修正] analyzeFromDriveUrl削除 - URL入力方式を廃止しアップロード方式に統一
 renderShelf();
 </script>
 </body>
