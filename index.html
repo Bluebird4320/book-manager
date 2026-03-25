@@ -1168,7 +1168,7 @@ uploadArea.addEventListener('drop', e => {
 // ============================================================
 
 async function callGeminiVision(apiKey, base64, mimeType) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`; // [修正] 2.0-flash→1.5-flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`; // [修正] 2.0-flash→1.5-flash
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -1186,7 +1186,7 @@ async function callGeminiVision(apiKey, base64, mimeType) {
 }
 
 async function callGemini(apiKey, prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`; // [修正] 2.0-flash→1.5-flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`; // [修正] 2.0-flash→1.5-flash
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
