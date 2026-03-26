@@ -398,6 +398,21 @@ a { color: var(--amber); text-decoration: none; }
   background: var(--success);
   border-color: var(--success);
 }
+/* [修正] チャレンジメモ欄スライド */
+.challenge-memo-wrap {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .3s ease;
+}
+.challenge-memo-wrap.open { max-height: 140px; }
+.challenge-memo {
+  width: 100%;
+  min-height: 80px;
+  margin-top: 8px;
+  font-size: 13px;
+  resize: none;
+  min-height: 72px;
+}
 
 /* 長期目標 */
 .goal-card {
@@ -1015,16 +1030,33 @@ function openDetail(bookId) {
       </div>`).join('');
   }
 
-  // 7日間チャレンジ
+  // 7日間チャレンジ [修正] プログレスバー・完了メッセージ・メモ欄追加
   if (challenge && challenge.items) {
+    const done = challenge.items.filter(i => i.done).length;
+    const total = challenge.items.length;
+    const pct = Math.round(done / total * 100);
     html += `<div class="section-label">7日間チャレンジ</div>`;
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <div class="progress-bar" style="flex:1;">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap;">${done}/${total}日達成</div>
+    </div>`;
+    if (done === total) {
+      html += `<div style="text-align:center;font-size:14px;color:var(--amber);margin-bottom:10px;">🎉 チャレンジ完了！</div>`;
+    }
     html += challenge.items.map((item, i) => `
       <div class="challenge-item">
         <button class="challenge-check ${item.done ? 'done' : ''}"
           onclick="toggleChallenge('${bookId}', ${i})"></button>
-        <div>
+        <div style="flex:1;">
           <div class="challenge-day">Day ${i+1}</div>
           <div class="challenge-text">${esc(item.text)}</div>
+          <div class="challenge-memo-wrap ${item.done ? 'open' : ''}">
+            <textarea class="challenge-memo"
+              placeholder="今日の気づき・実践内容"
+              oninput="saveChallengeMemo('${bookId}', ${i}, this.value)">${esc(item.memo || '')}</textarea>
+          </div>
         </div>
       </div>`).join('');
   }
@@ -1059,6 +1091,15 @@ function toggleChallenge(bookId, idx) {
   g.items[idx].done = !g.items[idx].done;
   DB.saveGoals(goals);
   openDetail(bookId); // 再描画
+}
+
+// [修正] チャレンジメモを保存（再描画なし）
+function saveChallengeMemo(bookId, idx, text) {
+  const goals = DB.getGoals();
+  const g = goals.find(g => g.book_id === bookId && g.type === 'weekly');
+  if (!g) return;
+  g.items[idx].memo = text;
+  DB.saveGoals(goals);
 }
 
 function closeModal(id) {
