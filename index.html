@@ -260,6 +260,10 @@ a { color: var(--amber); text-decoration: none; }
 .btn-ghost:hover { background: var(--bg3); }
 .btn-danger { background: #3a1810; color: #e88a7a; }
 .btn-block { width: 100%; }
+.btn-sm { padding: 8px 14px; font-size: 13px; }
+/* [修正] 表紙画像スタイル */
+.cover-strip { height:90px;overflow:hidden;border-radius:var(--radius-sm) var(--radius-sm) 0 0;margin:-16px -16px 12px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--muted); }
+.cover-strip img { width:100%;height:100%;object-fit:cover;display:block; }
 
 /* ============================================================
    読書ログカレンダー
@@ -644,15 +648,23 @@ a { color: var(--amber); text-decoration: none; }
     </div>
     <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none;" onchange="handleFileSelect(event)">
     <div id="ocrPreview" style="display:none;">
+      <!-- [修正] 削除ボタン追加・AI解析ボタン分離 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:12px;color:var(--muted);">画像を選択済み</span>
+        <button class="btn btn-ghost btn-sm" onclick="resetOcr()">✕ 削除</button>
+      </div>
+      <img id="previewImg" style="width:100%;border-radius:var(--radius);margin-bottom:12px;max-height:200px;object-fit:cover;display:none;">
+      <button class="btn btn-primary btn-block" id="ocrAnalyzeBtn" onclick="runOcr()" style="margin-bottom:12px;">
+        🔍 AI解析（Gemini）
+      </button>
       <div id="ocrSpinner"><div class="spinner"></div><p>Gemini APIで解析中... しばらくお待ちください</p></div>
-      <img id="previewImg" style="width:100%;border-radius:var(--radius);margin-bottom:12px;max-height:200px;object-fit:cover;">
       <div class="form-group">
         <label class="form-label">タイトル *</label>
         <input type="text" id="ocrTitle" placeholder="本のタイトル">
       </div>
       <div class="form-group">
         <label class="form-label">OCR結果（編集可）</label>
-        <textarea id="ocrResult" placeholder="Gemini APIで解析中... しばらくお待ちください"></textarea>
+        <textarea id="ocrResult" placeholder="AI解析ボタンを押すとGeminiが読み取ります"></textarea>
       </div>
       <button class="btn btn-primary btn-block" onclick="saveOcrBook()">保存する</button>
     </div>
@@ -744,6 +756,19 @@ a { color: var(--amber); text-decoration: none; }
 </div>
 
 <!-- ============================================================
+     画面⑥：フラッシュカード [修正] 独立ページ追加
+============================================================ -->
+<div class="page" id="page-flash">
+  <div class="page-title">フラッシュカード</div>
+  <div class="form-group" style="margin-bottom:16px;">
+    <select id="flashFilter" onchange="renderFlash()">
+      <option value="">すべての本</option>
+    </select>
+  </div>
+  <div id="flashList"></div>
+</div>
+
+<!-- ============================================================
      詳細モーダル
 ============================================================ -->
 <div class="modal-overlay" id="detailModal">
@@ -775,6 +800,11 @@ a { color: var(--amber); text-decoration: none; }
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     目標
   </button>
+  <!-- [修正] フラッシュカード独立タブ追加 -->
+  <button class="nav-btn" onclick="showPage('flash')" id="nav-flash">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    カード
+  </button>
   <button class="nav-btn" onclick="showPage('stats')" id="nav-stats">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
     統計
@@ -797,6 +827,12 @@ const DB = {
   getApiKey: () => localStorage.getItem('gemini_api_key') || '',
   saveApiKey: (k) => localStorage.setItem('gemini_api_key', k),
 };
+// [修正] 表紙画像URL管理
+const COVERS = {
+  getAll: () => JSON.parse(localStorage.getItem('book_covers') || '{}'),
+  get: (bookId) => COVERS.getAll()[bookId] || '',
+  set: (bookId, url) => { const c = COVERS.getAll(); c[bookId] = url; localStorage.setItem('book_covers', JSON.stringify(c)); },
+};
 
 // ============================================================
 // === UI：画面遷移 ===
@@ -810,6 +846,7 @@ function showPage(name) {
   if (name === 'stats') renderStats();
   if (name === 'challenge') renderChallenge();
   if (name === 'settings') renderSettings();
+  if (name === 'flash') renderFlash(); // [修正] フラッシュカード画面
 }
 
 // ============================================================
@@ -860,7 +897,13 @@ function renderShelf() {
   }
   list.innerHTML = books.map(s => {
     const cnt = sessions.filter(x => x.book_id === s.book_id).length;
-    return `<div class="card" onclick="openDetail('${s.book_id}')">
+    // [修正] 表紙画像表示
+    const coverUrl = COVERS.get(s.book_id);
+    const coverHtml = coverUrl
+      ? `<div class="cover-strip"><img src="${coverUrl}" alt="" loading="lazy"></div>`
+      : '';
+    return `<div class="card" onclick="openDetail('${s.book_id}')" style="overflow:hidden;">
+      ${coverHtml}
       <div class="card-title">${esc(s.タイトル)}</div>
       <div class="card-meta">
         <span>${s.日付}</span>
@@ -1017,9 +1060,9 @@ function saveBook() {
   if (!title) { showStatus('タイトルを入力してください', true); return; }
 
   const sessions = DB.getSessions();
-  // 同タイトルのbook_idを引き継ぐ
   const existing = sessions.find(s => s.タイトル === title);
   const bookId = existing ? existing.book_id : randomId();
+  const isNew = !existing;
 
   sessions.push({
     session_id: randomId(),
@@ -1033,7 +1076,9 @@ function saveBook() {
   });
   DB.saveSessions(sessions);
 
-  // フォームリセット
+  // [修正] 新規本のみ表紙を非同期取得
+  if (isNew) fetchBookCover(title).then(url => { if (url) COVERS.set(bookId, url); });
+
   ['inputTitle','inputPurpose','inputMemo','inputAnswer'].forEach(id => {
     document.getElementById(id).value = '';
   });
@@ -1051,6 +1096,9 @@ function openAddSession(bookId, title) {
 // ============================================================
 // === OCR処理 ===
 // ============================================================
+
+// [修正] OCR用グローバル変数（runOcrで使用）
+let _ocrDataUrl = null, _ocrIsImage = false, _ocrFileType = '';
 
 function showOcrSpinner() { document.getElementById('ocrSpinner').style.display = 'block'; }
 function hideOcrSpinner() { document.getElementById('ocrSpinner').style.display = 'none'; }
@@ -1071,50 +1119,66 @@ function resizeImageToBase64(dataUrl, maxSize = 1200) {
   });
 }
 
+// [修正] 画像選択時はプレビューのみ（OCR実行しない）
 function handleFileSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
+  _ocrIsImage = file.type.startsWith('image/');
+  _ocrFileType = file.type || 'application/pdf';
 
   const reader = new FileReader();
-  reader.onload = async (e) => {
+  reader.onload = (e) => {
+    _ocrDataUrl = e.target.result;
     document.getElementById('ocrPreview').style.display = 'block';
     document.getElementById('uploadArea').style.display = 'none';
-    showOcrSpinner();
-
-    // 画像プレビュー（PDF以外）
-    if (file.type.startsWith('image/')) {
+    if (_ocrIsImage) {
       document.getElementById('previewImg').src = e.target.result;
       document.getElementById('previewImg').style.display = 'block';
     } else {
       document.getElementById('previewImg').style.display = 'none';
     }
-
-    const apiKey = DB.getApiKey();
-    if (!apiKey) {
-      hideOcrSpinner();
-      showStatus('設定画面でGemini APIキーを設定してください', true);
-      return;
-    }
-
-    try {
-      let base64, mimeType;
-      if (file.type.startsWith('image/')) {
-        base64 = await resizeImageToBase64(e.target.result);
-        mimeType = 'image/jpeg';
-      } else {
-        base64 = e.target.result.split(',')[1];
-        mimeType = file.type || 'application/pdf';
-      }
-      const text = await callGeminiVision(apiKey, base64, mimeType);
-      document.getElementById('ocrResult').value = text;
-    } catch (err) {
-      showStatus('OCRに失敗しました: ' + err.message, true);
-      document.getElementById('ocrResult').value = '';
-    } finally {
-      hideOcrSpinner();
-    }
+    document.getElementById('ocrResult').value = '';
   };
   reader.readAsDataURL(file);
+}
+
+// [修正] AI解析ボタン押下でOCR実行
+async function runOcr() {
+  if (!_ocrDataUrl) return;
+  const apiKey = DB.getApiKey();
+  if (!apiKey) { showStatus('設定画面でGemini APIキーを設定してください', true); return; }
+
+  showOcrSpinner();
+  document.getElementById('ocrAnalyzeBtn').disabled = true;
+  try {
+    let base64, mimeType;
+    if (_ocrIsImage) {
+      base64 = await resizeImageToBase64(_ocrDataUrl);
+      mimeType = 'image/jpeg';
+    } else {
+      base64 = _ocrDataUrl.split(',')[1];
+      mimeType = _ocrFileType;
+    }
+    const text = await callGeminiVision(apiKey, base64, mimeType);
+    document.getElementById('ocrResult').value = text;
+  } catch (err) {
+    showStatus('OCRに失敗しました: ' + err.message, true);
+  } finally {
+    hideOcrSpinner();
+    document.getElementById('ocrAnalyzeBtn').disabled = false;
+  }
+}
+
+// [修正] 画像削除・リセット
+function resetOcr() {
+  _ocrDataUrl = null; _ocrIsImage = false; _ocrFileType = '';
+  document.getElementById('ocrPreview').style.display = 'none';
+  document.getElementById('uploadArea').style.display = 'block';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('ocrTitle').value = '';
+  document.getElementById('ocrResult').value = '';
+  const img = document.getElementById('previewImg');
+  img.src = ''; img.style.display = 'none';
 }
 
 function saveOcrBook() {
@@ -1124,6 +1188,7 @@ function saveOcrBook() {
   const sessions = DB.getSessions();
   const existing = sessions.find(s => s.タイトル === title);
   const bookId = existing ? existing.book_id : randomId();
+  const isNew = !existing;
 
   sessions.push({
     session_id: randomId(),
@@ -1137,12 +1202,10 @@ function saveOcrBook() {
   });
   DB.saveSessions(sessions);
 
-  document.getElementById('ocrTitle').value = '';
-  document.getElementById('ocrResult').value = '';
-  document.getElementById('ocrPreview').style.display = 'none';
-  document.getElementById('uploadArea').style.display = 'block';
-  document.getElementById('fileInput').value = '';
+  // [修正] 新規本のみ表紙を非同期取得
+  if (isNew) fetchBookCover(title).then(url => { if (url) COVERS.set(bookId, url); });
 
+  resetOcr(); // [修正] resetOcr で一括リセット
   showStatus('登録しました！');
   showPage('shelf');
 }
@@ -1156,9 +1219,7 @@ uploadArea.addEventListener('drop', e => {
   uploadArea.classList.remove('drag');
   const file = e.dataTransfer.files[0];
   if (file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    document.getElementById('fileInput').files = dt.files;
+    // [修正] DataTransfer経由でfileInputに設定してからhandleFileSelect呼び出し
     handleFileSelect({ target: { files: [file] } });
   }
 });
@@ -1333,22 +1394,33 @@ function openGoalModal(type) {
       </div>
       <button class="btn btn-primary btn-block" onclick="generateChallengeFromModal()">Geminiで生成</button>`;
   } else {
+    // [修正] 月間・長期目標にGemini自動生成ボタン追加
     const periods = type === 'monthly'
       ? ['今月','来月']
       : ['1ヶ月','3ヶ月','半年','1年'];
+    const deadlineRow = type === 'longterm' ? `
+      <div class="form-group">
+        <label class="form-label">期限日（任意）</label>
+        <input type="date" id="goalDeadline">
+      </div>` : '';
     html = `
+      <div class="form-group">
+        <label class="form-label">対象の本（任意）</label>
+        <select id="goalBookSelect">
+          <option value="">なし</option>
+          ${books.map(b => `<option value="${b.book_id}">${esc(b.タイトル)}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-group">
         <label class="form-label">期間</label>
         <select id="goalPeriod">${periods.map(p => `<option>${p}</option>`).join('')}</select>
       </div>
       <div class="form-group">
         <label class="form-label">目標内容</label>
-        <textarea id="goalText" placeholder="達成したいこと"></textarea>
+        <textarea id="goalText" placeholder="達成したいこと（またはGeminiで自動生成）"></textarea>
       </div>
-      <div class="form-group">
-        <label class="form-label">期限日（任意）</label>
-        <input type="date" id="goalDeadline">
-      </div>
+      ${deadlineRow}
+      <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="generateGoalText('${type}')">✨ Geminiで自動生成</button>
       <button class="btn btn-primary btn-block" onclick="saveGoal('${type}')">保存する</button>`;
   }
   document.getElementById('goalModalContent').innerHTML = html;
@@ -1377,6 +1449,96 @@ function saveGoal(type) {
   closeModal('goalModal');
   showStatus('目標を保存しました！');
   renderChallenge();
+}
+
+// ============================================================
+// === Gemini 目標自動生成 [修正] ===
+// ============================================================
+async function generateGoalText(type) {
+  const apiKey = DB.getApiKey();
+  if (!apiKey) { showStatus('設定画面でAPIキーを設定してください', true); return; }
+
+  const bookId = document.getElementById('goalBookSelect')?.value || '';
+  const period = document.getElementById('goalPeriod')?.value || '';
+  const sessions = DB.getSessions();
+
+  let context = '';
+  if (bookId) {
+    const bookSessions = sessions.filter(s => s.book_id === bookId);
+    const title = bookSessions[0]?.タイトル || '';
+    const memo = bookSessions.map(s => s.メモ).filter(Boolean).join('\n');
+    context = `本のタイトル: ${title}\n読書メモ: ${memo}`;
+  } else {
+    const recent = sessions.slice(-5).map(s => `${s.タイトル}: ${s.メモ}`).filter(Boolean).join('\n');
+    context = `最近の読書:\n${recent}`;
+  }
+
+  const typeLabel = type === 'monthly' ? `月間（${period}）` : `長期（${period}後）`;
+  const prompt = `以下の読書内容をもとに、${typeLabel}の目標を1〜2文で提案してください。具体的・行動可能な目標にしてください。目標文のみ返してください。\n\n${context}`;
+
+  showStatus('目標を生成中...');
+  try {
+    const text = await callGemini(apiKey, prompt);
+    document.getElementById('goalText').value = text.trim();
+    showStatus('目標を生成しました！');
+  } catch (e) {
+    showStatus('生成に失敗しました: ' + e.message, true);
+  }
+}
+
+// ============================================================
+// === Google Books API 表紙取得 [修正] ===
+// ============================================================
+async function fetchBookCover(title) {
+  try {
+    const q = encodeURIComponent(title);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${q}&maxResults=1&fields=items/volumeInfo/imageLinks`);
+    if (!res.ok) return '';
+    const data = await res.json();
+    const thumb = data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail || '';
+    return thumb.replace('http://', 'https://');
+  } catch {
+    return '';
+  }
+}
+
+// ============================================================
+// === フラッシュカード専用画面 [修正] ===
+// ============================================================
+function renderFlash() {
+  const goals = DB.getGoals();
+  const sessions = DB.getSessions();
+  const books = [...new Map(sessions.map(s => [s.book_id, s])).values()];
+
+  // フィルター選択肢を更新
+  const sel = document.getElementById('flashFilter');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">すべての本</option>' +
+      books.map(b => `<option value="${b.book_id}" ${b.book_id === cur ? 'selected' : ''}>${esc(b.タイトル)}</option>`).join('');
+  }
+
+  const filterBookId = sel?.value || '';
+  const flashGoals = goals.filter(g => g.type === 'flashcard' && (!filterBookId || g.book_id === filterBookId));
+
+  if (!flashGoals.length) {
+    document.getElementById('flashList').innerHTML =
+      '<div class="empty-state"><p>フラッシュカードがありません<br>本棚の本を選んで生成してください</p></div>';
+    return;
+  }
+
+  document.getElementById('flashList').innerHTML = flashGoals.map(g => {
+    const s = sessions.find(x => x.book_id === g.book_id);
+    return `<div style="margin-bottom:24px;">
+      <div class="section-label">${esc(s?.タイトル || g.book_id)}</div>
+      ${(g.cards || []).map((c, i) => `
+        <div class="flashcard">
+          <div class="flashcard-q">Q. ${esc(c.q)}</div>
+          <button class="flashcard-toggle" onclick="this.nextElementSibling.classList.toggle('open')">答えを見る</button>
+          <div class="flashcard-a">A. ${esc(c.a)}</div>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
 }
 
 // ============================================================
