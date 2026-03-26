@@ -266,29 +266,48 @@ a { color: var(--amber); text-decoration: none; }
 .cover-strip img { width:100%;height:100%;object-fit:cover;display:block; }
 
 /* ============================================================
-   読書ログカレンダー
+   横スクロール「最近読んだ本」[修正] カレンダーから変更
 ============================================================ */
-.calendar-wrap { margin-bottom: 24px; overflow-x: auto; }
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-  min-width: 280px;
+.recent-scroll {
+  overflow-x: auto;
+  display: flex;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
-.cal-cell {
-  aspect-ratio: 1;
-  border-radius: 3px;
+.recent-scroll::-webkit-scrollbar { display: none; }
+.recent-card {
+  flex-shrink: 0;
+  width: 96px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.recent-card:hover { opacity: .8; }
+.recent-card-cover {
+  width: 96px;
+  height: 128px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
   background: var(--surface);
-  transition: background .2s;
-}
-.cal-cell.has-read { background: var(--amber-dim); }
-.cal-cell.has-read.level-2 { background: var(--amber); }
-.cal-month-label {
-  font-size: 11px;
-  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 6px;
-  font-weight: 500;
+  font-size: 28px;
 }
+.recent-card-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.recent-card-title {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--cream);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.recent-card-date { font-size: 10px; color: var(--muted); margin-top: 3px; }
 
 /* ============================================================
    詳細画面
@@ -572,11 +591,9 @@ a { color: var(--amber); text-decoration: none; }
     <div style="font-size:12px;color:var(--muted);" id="shelfCount"></div>
   </div>
 
-  <!-- 読書ログカレンダー -->
-  <div class="calendar-wrap">
-    <div class="cal-month-label" id="calLabel"></div>
-    <div class="calendar-grid" id="calGrid"></div>
-  </div>
+  <!-- 最近読んだ本（横スクロール）[修正] カレンダーから変更 -->
+  <div class="section-label" style="margin-bottom:8px;" id="recentLabel"></div>
+  <div class="recent-scroll" id="recentScroll"></div>
 
   <!-- 検索 -->
   <div style="margin-bottom:16px;position:relative;">
@@ -868,8 +885,8 @@ function renderShelf() {
   const sessions = DB.getSessions();
   const query = document.getElementById('searchInput').value.toLowerCase();
 
-  // カレンダー
-  renderCalendar(sessions);
+  // [修正] カレンダー → 横スクロール「最近読んだ本」
+  renderRecentBooks(sessions);
 
   // フィルタ
   const filtered = sessions.filter(s =>
@@ -915,28 +932,37 @@ function renderShelf() {
   }).join('');
 }
 
-function renderCalendar(sessions) {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const days = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
+// [修正] カレンダー廃止→横スクロール「最近読んだ本」
+function renderRecentBooks(sessions) {
+  const el = document.getElementById('recentScroll');
+  const label = document.getElementById('recentLabel');
+  if (!el) return;
 
-  const readDays = new Set(
-    sessions.filter(s => s.日付.startsWith(`${year}-${String(month+1).padStart(2,'0')}`))
-      .map(s => parseInt(s.日付.split('-')[2]))
-  );
+  // 日付降順・book_id重複排除・最新12冊
+  const seen = new Set();
+  const recent = [...sessions]
+    .sort((a, b) => b.日付.localeCompare(a.日付))
+    .filter(s => { if (seen.has(s.book_id)) return false; seen.add(s.book_id); return true; })
+    .slice(0, 12);
 
-  document.getElementById('calLabel').textContent =
-    `${year}年${month+1}月の読書記録`;
+  if (label) label.textContent = recent.length ? '最近読んだ本' : '';
 
-  let html = '';
-  for (let i = 0; i < firstDay; i++) html += '<div class="cal-cell"></div>';
-  for (let d = 1; d <= days; d++) {
-    const cls = readDays.has(d) ? 'cal-cell has-read' : 'cal-cell';
-    html += `<div class="${cls}" title="${month+1}/${d}"></div>`;
+  if (!recent.length) {
+    el.innerHTML = '';
+    return;
   }
-  document.getElementById('calGrid').innerHTML = html;
+
+  el.innerHTML = recent.map(s => {
+    const coverUrl = COVERS.get(s.book_id);
+    const coverInner = coverUrl
+      ? `<img src="${coverUrl}" alt="" loading="lazy">`
+      : '📚';
+    return `<div class="recent-card" onclick="openDetail('${s.book_id}')">
+      <div class="recent-card-cover">${coverInner}</div>
+      <div class="recent-card-title">${esc(s.タイトル)}</div>
+      <div class="recent-card-date">${s.日付}</div>
+    </div>`;
+  }).join('');
 }
 
 document.getElementById('searchInput').addEventListener('input', renderShelf);
