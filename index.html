@@ -591,6 +591,8 @@ a { color: var(--amber); text-decoration: none; }
 /* ステータスバッジ */
 .status-icon { font-size: 32px; margin-bottom: 12px; }
 </style>
+<!-- [修正] HEIC自動変換ライブラリ -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 </head>
 <body>
 
@@ -689,7 +691,7 @@ a { color: var(--amber); text-decoration: none; }
       <p>端末から画像・PDFを選択</p>
       <p style="font-size:11px;margin-top:4px;">JPEG / PNG / HEIC / PDF 対応</p>
     </div>
-    <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none;" onchange="handleFileSelect(event)">
+    <input type="file" id="fileInput" accept="image/*,.heic,.pdf" style="display:none;" onchange="handleFileSelect(event)">
     <div id="ocrPreview" style="display:none;">
       <!-- [修正] 削除ボタン追加・AI解析ボタン分離 -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -700,7 +702,7 @@ a { color: var(--amber); text-decoration: none; }
       <button class="btn btn-primary btn-block" id="ocrAnalyzeBtn" onclick="runOcr()" style="margin-bottom:12px;">
         🔍 AI解析（Gemini）
       </button>
-      <div id="ocrSpinner"><div class="spinner"></div><p>Gemini APIで解析中... しばらくお待ちください</p></div>
+      <div id="ocrSpinner"><div class="spinner"></div><p id="ocrSpinnerMsg">Gemini APIで解析中... しばらくお待ちください</p></div>
       <div class="form-group">
         <label class="form-label">タイトル *</label>
         <input type="text" id="ocrTitle" placeholder="本のタイトル">
@@ -1230,9 +1232,37 @@ function resizeImageToBase64(dataUrl, maxSize = 1200) {
 }
 
 // [修正] 画像選択時はプレビューのみ（OCR実行しない）
-function handleFileSelect(event) {
-  const file = event.target.files[0];
+// [修正] HEIC自動変換対応
+async function handleFileSelect(event) {
+  let file = event.target.files[0];
   if (!file) return;
+
+  // HEIC検出（MIMEタイプまたは拡張子で判定）
+  const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
+    || /\.heic$/i.test(file.name) || /\.heif$/i.test(file.name);
+
+  if (isHeic) {
+    // 警告メッセージ表示
+    showStatus('iPhoneの写真（HEIC）はSafariでのみ対応しています。Chromeをご利用の場合はJPEG/PNGに変換してからアップロードしてください。', false);
+
+    // heic2anyが利用可能なら自動変換を試みる
+    if (typeof heic2any !== 'undefined') {
+      document.getElementById('ocrSpinner').style.display = 'block';
+      document.getElementById('ocrSpinnerMsg').textContent = 'HEIC画像を変換中...';
+      try {
+        const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+        file = new File([blob], file.name.replace(/\.heic$/i, '.jpg'), { type: 'image/jpeg' });
+        document.getElementById('ocrSpinner').style.display = 'none';
+        document.getElementById('ocrSpinnerMsg').textContent = 'Gemini APIで解析中... しばらくお待ちください';
+      } catch (err) {
+        document.getElementById('ocrSpinner').style.display = 'none';
+        document.getElementById('ocrSpinnerMsg').textContent = 'Gemini APIで解析中... しばらくお待ちください';
+        showStatus('HEIC変換に失敗しました。iPhoneの設定で「フォーマット→互換性優先」にするとJPEGで保存されます。', true);
+        return;
+      }
+    }
+  }
+
   _ocrIsImage = file.type.startsWith('image/');
   _ocrFileType = file.type || 'application/pdf';
 
