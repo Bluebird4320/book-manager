@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>読書ノート</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Shippori+Mincho:wght@400;600&display=swap" rel="stylesheet">
@@ -47,7 +47,7 @@ input, textarea, select {
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   width: 100%;
-  font-size: 14px;
+  font-size: 16px !important; /* [修正] iOS Safariズーム防止 */
   outline: none;
   transition: border-color .2s;
 }
@@ -643,6 +643,17 @@ a { color: var(--amber); text-decoration: none; }
       <input type="text" id="inputPurpose" placeholder="この本から何を得たいか">
     </div>
   </div>
+  <!-- [修正] 表紙精度向上のため著者・ISBNフィールド追加 -->
+  <div class="form-row">
+    <div class="form-group">
+      <label class="form-label">著者名（任意・表紙精度向上）</label>
+      <input type="text" id="inputAuthor" placeholder="著者名">
+    </div>
+    <div class="form-group">
+      <label class="form-label">ISBN（任意・最高精度）</label>
+      <input type="text" id="inputIsbn" placeholder="9784XXXXXXXXX">
+    </div>
+  </div>
     <div class="form-group">
       <label class="form-label">メモ</label>
       <textarea id="inputMemo" placeholder="読書メモ・気づき・引用など"></textarea>
@@ -792,6 +803,11 @@ a { color: var(--amber); text-decoration: none; }
 ============================================================ -->
 <div class="page" id="page-flash">
   <div class="page-title">フラッシュカード</div>
+  <!-- [修正] 通常/Archivedタブ追加 -->
+  <div class="tabs" style="margin-bottom:16px;">
+    <button class="tab-btn active" onclick="switchFlashTab('active')">通常</button>
+    <button class="tab-btn" onclick="switchFlashTab('archived')">Archived</button>
+  </div>
   <div class="form-group" style="margin-bottom:16px;">
     <select id="flashFilter" onchange="renderFlash()">
       <option value="">すべての本</option>
@@ -805,6 +821,21 @@ a { color: var(--amber); text-decoration: none; }
 ============================================================ -->
 <div class="modal-overlay" id="detailModal">
   <div class="modal" id="detailContent"></div>
+</div>
+
+<!-- 表紙確認モーダル [修正] -->
+<div class="modal-overlay" id="coverConfirmModal">
+  <div class="modal" style="text-align:center;">
+    <div class="modal-title">表紙画像の確認</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">この表紙で合っていますか？</p>
+    <img id="coverConfirmImg" style="max-height:200px;max-width:100%;border-radius:var(--radius-sm);margin-bottom:8px;" src="" alt="">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;" id="coverConfirmCount"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="acceptCover()">はい・保存</button>
+      <button class="btn btn-ghost" style="flex:1;" onclick="nextCoverCandidate()">別の画像</button>
+    </div>
+    <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="closeModal('coverConfirmModal')">スキップ</button>
+  </div>
 </div>
 
 <!-- 目標追加モーダル -->
@@ -1125,6 +1156,9 @@ function switchTab(tab) {
 function saveBook() {
   const title = document.getElementById('inputTitle').value.trim();
   if (!title) { showStatus('タイトルを入力してください', true); return; }
+  // [修正] フォームリセット前に著者・ISBNを取得
+  const author = document.getElementById('inputAuthor')?.value?.trim() || '';
+  const isbn = document.getElementById('inputIsbn')?.value?.trim() || '';
 
   const sessions = DB.getSessions();
   const existing = sessions.find(s => s.タイトル === title);
@@ -1143,14 +1177,19 @@ function saveBook() {
   });
   DB.saveSessions(sessions);
 
-  // [修正] 新規本のみ表紙を非同期取得
-  if (isNew) fetchBookCover(title).then(url => { if (url) COVERS.set(bookId, url); });
-
-  ['inputTitle','inputPurpose','inputMemo','inputAnswer'].forEach(id => {
-    document.getElementById(id).value = '';
+  ['inputTitle','inputPurpose','inputMemo','inputAnswer','inputAuthor','inputIsbn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
   showStatus('登録しました！');
   showPage('shelf');
+
+  // [修正] 新規本のみ表紙確認UI起動
+  if (isNew) {
+    fetchBookCoverCandidates(title, author, isbn).then(candidates => {
+      if (candidates.length) showCoverConfirm(bookId, candidates);
+    });
+  }
 }
 
 // セッション追加（詳細から）
@@ -1166,6 +1205,10 @@ function openAddSession(bookId, title) {
 
 // [修正] OCR用グローバル変数（runOcrで使用）
 let _ocrDataUrl = null, _ocrIsImage = false, _ocrFileType = '';
+// [修正] 表紙確認UI用グローバル変数
+let _coverCandidates = [], _coverCandidateIdx = 0, _coverBookId = '';
+// [修正] フラッシュカードタブ状態
+let _flashTab = 'active';
 
 function showOcrSpinner() { document.getElementById('ocrSpinner').style.display = 'block'; }
 function hideOcrSpinner() { document.getElementById('ocrSpinner').style.display = 'none'; }
@@ -1209,6 +1252,43 @@ function handleFileSelect(event) {
   reader.readAsDataURL(file);
 }
 
+// [修正] OCR結果テキスト整形
+function formatOcrText(text) {
+  if (!text) return text;
+  const lines = text.split('\n');
+  const result = [];
+  let buffer = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // 空行: 段落区切り
+    if (!trimmed) {
+      if (buffer) { result.push(buffer); buffer = ''; }
+      result.push('');
+      continue;
+    }
+    // 箇条書き: そのまま保持
+    if (/^[・\-\*]|^\d+[\.\)]/.test(trimmed)) {
+      if (buffer) { result.push(buffer); buffer = ''; }
+      result.push(trimmed);
+      continue;
+    }
+    if (buffer) {
+      // バッファ末尾が文末記号なら区切る、それ以外は結合
+      if (/[。．.！!？?」』）\)…]$/.test(buffer)) {
+        result.push(buffer);
+        buffer = trimmed;
+      } else {
+        buffer += trimmed;
+      }
+    } else {
+      buffer = trimmed;
+    }
+  }
+  if (buffer) result.push(buffer);
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // [修正] AI解析ボタン押下でOCR実行
 async function runOcr() {
   if (!_ocrDataUrl) return;
@@ -1226,8 +1306,8 @@ async function runOcr() {
       base64 = _ocrDataUrl.split(',')[1];
       mimeType = _ocrFileType;
     }
-    const text = await callGeminiVision(apiKey, base64, mimeType);
-    document.getElementById('ocrResult').value = text;
+    const raw = await callGeminiVision(apiKey, base64, mimeType);
+    document.getElementById('ocrResult').value = formatOcrText(raw); // [修正] 整形処理追加
   } catch (err) {
     showStatus('OCRに失敗しました: ' + err.message, true);
   } finally {
@@ -1554,19 +1634,90 @@ async function generateGoalText(type) {
 }
 
 // ============================================================
-// === Google Books API 表紙取得 [修正] ===
+// === Google Books API 表紙取得 [修正] 精度改善版 ===
 // ============================================================
-async function fetchBookCover(title) {
+async function fetchCoverByQuery(q, max = 5) {
   try {
-    const q = encodeURIComponent(title);
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${q}&maxResults=1&fields=items/volumeInfo/imageLinks`);
-    if (!res.ok) return '';
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=${max}&fields=items/volumeInfo/imageLinks`);
+    if (!res.ok) return [];
     const data = await res.json();
-    const thumb = data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail || '';
-    return thumb.replace('http://', 'https://');
-  } catch {
-    return '';
+    return (data?.items || [])
+      .map(it => it.volumeInfo?.imageLinks?.thumbnail || '')
+      .filter(Boolean)
+      .map(u => u.replace('http://', 'https://'));
+  } catch { return []; }
+}
+
+async function fetchBookCoverCandidates(title, author = '', isbn = '') {
+  const results = [], seen = new Set();
+  const add = (urls) => urls.forEach(u => { if (!seen.has(u)) { seen.add(u); results.push(u); } });
+  if (isbn) add(await fetchCoverByQuery(`isbn:${isbn.replace(/-/g, '')}`, 3));
+  if (author) add(await fetchCoverByQuery(`intitle:${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}`, 3));
+  add(await fetchCoverByQuery(`intitle:${encodeURIComponent(title)}`, 5));
+  return results.slice(0, 5);
+}
+
+// 旧インターフェース互換（saveOcrBook等から呼ばれる）
+async function fetchBookCover(title) {
+  const candidates = await fetchBookCoverCandidates(title);
+  return candidates[0] || '';
+}
+
+// ============================================================
+// === 表紙確認UI [修正] ===
+// ============================================================
+function showCoverConfirm(bookId, candidates) {
+  _coverCandidates = candidates;
+  _coverCandidateIdx = 0;
+  _coverBookId = bookId;
+  _updateCoverUI();
+  document.getElementById('coverConfirmModal').classList.add('open');
+}
+function _updateCoverUI() {
+  document.getElementById('coverConfirmImg').src = _coverCandidates[_coverCandidateIdx];
+  document.getElementById('coverConfirmCount').textContent =
+    `候補 ${_coverCandidateIdx + 1} / ${_coverCandidates.length}`;
+}
+function acceptCover() {
+  COVERS.set(_coverBookId, _coverCandidates[_coverCandidateIdx]);
+  closeModal('coverConfirmModal');
+  renderShelf();
+}
+function nextCoverCandidate() {
+  if (_coverCandidateIdx + 1 >= _coverCandidates.length) {
+    closeModal('coverConfirmModal');
+    showStatus('候補がなくなりました');
+    return;
   }
+  _coverCandidateIdx++;
+  _updateCoverUI();
+}
+
+// ============================================================
+// === フラッシュカード Archive [修正] ===
+// ============================================================
+function archiveCard(bookId, cardIdx) {
+  const goals = DB.getGoals();
+  const g = goals.find(g => g.book_id === bookId && g.type === 'flashcard');
+  if (!g || !g.cards[cardIdx]) return;
+  g.cards[cardIdx].archived = true;
+  DB.saveGoals(goals);
+  renderFlash();
+}
+function restoreCard(bookId, cardIdx) {
+  const goals = DB.getGoals();
+  const g = goals.find(g => g.book_id === bookId && g.type === 'flashcard');
+  if (!g || !g.cards[cardIdx]) return;
+  g.cards[cardIdx].archived = false;
+  DB.saveGoals(goals);
+  renderFlash();
+}
+function switchFlashTab(tab) {
+  _flashTab = tab;
+  document.querySelectorAll('#page-flash .tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'active') || (i === 1 && tab === 'archived'));
+  });
+  renderFlash();
 }
 
 // ============================================================
@@ -1576,8 +1727,8 @@ function renderFlash() {
   const goals = DB.getGoals();
   const sessions = DB.getSessions();
   const books = [...new Map(sessions.map(s => [s.book_id, s])).values()];
+  const isArchivedTab = _flashTab === 'archived';
 
-  // フィルター選択肢を更新
   const sel = document.getElementById('flashFilter');
   if (sel) {
     const cur = sel.value;
@@ -1588,24 +1739,41 @@ function renderFlash() {
   const filterBookId = sel?.value || '';
   const flashGoals = goals.filter(g => g.type === 'flashcard' && (!filterBookId || g.book_id === filterBookId));
 
-  if (!flashGoals.length) {
-    document.getElementById('flashList').innerHTML =
-      '<div class="empty-state"><p>フラッシュカードがありません<br>本棚の本を選んで生成してください</p></div>';
-    return;
-  }
+  let html = '';
+  let hasContent = false;
 
-  document.getElementById('flashList').innerHTML = flashGoals.map(g => {
+  flashGoals.forEach(g => {
     const s = sessions.find(x => x.book_id === g.book_id);
-    return `<div style="margin-bottom:24px;">
+    // [修正] タブに応じてarchived/通常カードをフィルタ
+    const cards = (g.cards || [])
+      .map((c, i) => ({ ...c, _idx: i }))
+      .filter(c => isArchivedTab ? c.archived === true : c.archived !== true);
+    if (!cards.length) return;
+    hasContent = true;
+    html += `<div style="margin-bottom:24px;">
       <div class="section-label">${esc(s?.タイトル || g.book_id)}</div>
-      ${(g.cards || []).map((c, i) => `
+      ${cards.map(c => `
         <div class="flashcard">
           <div class="flashcard-q">Q. ${esc(c.q)}</div>
-          <button class="flashcard-toggle" onclick="this.nextElementSibling.classList.toggle('open')">答えを見る</button>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <button class="flashcard-toggle" onclick="this.parentElement.nextElementSibling.classList.toggle('open')">答えを見る</button>
+            ${isArchivedTab
+              ? `<button style="font-size:11px;color:var(--success);background:none;cursor:pointer;" onclick="restoreCard('${g.book_id}', ${c._idx})">↩ 復元</button>`
+              : `<button style="font-size:11px;color:var(--muted);background:none;cursor:pointer;" onclick="archiveCard('${g.book_id}', ${c._idx})">Archive</button>`
+            }
+          </div>
           <div class="flashcard-a">A. ${esc(c.a)}</div>
         </div>`).join('')}
     </div>`;
-  }).join('');
+  });
+
+  if (!hasContent) {
+    html = `<div class="empty-state"><p>${isArchivedTab
+      ? 'Archivedカードがありません'
+      : 'フラッシュカードがありません<br>本棚の本を選んで生成してください'}</p></div>`;
+  }
+
+  document.getElementById('flashList').innerHTML = html;
 }
 
 // ============================================================
