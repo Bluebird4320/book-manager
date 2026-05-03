@@ -26,6 +26,7 @@ Claude Desktop への登録:
 """
 
 import json
+import re
 import uuid
 import csv
 import io
@@ -43,6 +44,10 @@ MCP_NAME = "book-manager"
 
 # データファイルパス（同ディレクトリの books.json）
 DATA_PATH = Path(__file__).parent / "books.json"
+
+# Obsidian 読書ノートフォルダ
+OBSIDIAN_PATH = Path("/Users/yoshikawasho/Library/Mobile Documents/iCloud~md~obsidian/Documents/vault/01_読書ノート")
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".heic")
 
 # Gemini API（オプション）
 GEMINI_API_KEY: str = ""  # 環境変数 GEMINI_API_KEY から読み込む
@@ -72,6 +77,80 @@ def _save(sessions: list[dict]) -> None:
 
 def _today() -> str:
     return datetime.now().strftime("%Y-%m-%d")
+
+
+# ============================================================
+# Obsidian ヘルパー関数
+# ============================================================
+
+def _parse_obsidian_note(filepath: Path) -> dict:
+    """Obsidianノートをパースしてフィールドのdictを返す。"""
+    content = filepath.read_text(encoding="utf-8")
+    lines = content.splitlines()
+
+    # タイトル: H1見出し、なければファイル名
+    title = ""
+    for line in lines:
+        if line.startswith("# "):
+            title = line[2:].strip()
+            break
+    if not title:
+        title = filepath.stem
+
+    # H2セクションを解析
+    sections: dict[str, list[str]] = {}
+    current: Optional[str] = None
+    for line in lines:
+        if line.startswith("## "):
+            current = line[3:].strip()
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+
+    def section_text(keyword: str) -> str:
+        for k, v in sections.items():
+            if keyword in k:
+                return "\n".join(v).strip()
+        return ""
+
+    # 日付: 読み始めセクションから YYYY-MM-DD or YYYY/MM/DD を抽出
+    date = ""
+    m = re.search(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})", section_text("読み始め"))
+    if m:
+        date = f"{m.group(1)}-{m.group(2).zfill(2)}-{m.group(3).zfill(2)}"
+
+    # メモ: 重要ポイント + 刺さった言葉 + 自分の言葉で要約 を結合
+    memo_parts = []
+    for key in ["重要ポイント", "刺さった言葉", "自分の言葉で要約"]:
+        text = section_text(key)
+        if text:
+            memo_parts.append(f"【{key}】\n{text}")
+    memo = "\n\n".join(memo_parts)
+
+    return {
+        "title": title,
+        "author": section_text("著者"),
+        "date": date or _today(),
+        "genre": section_text("ジャンル"),
+        "purpose": section_text("この本を読む目的"),
+        "memo": memo,
+        "answer": section_text("すぐ実行すること"),
+    }
+
+
+def _find_cover_image(note_path: Path) -> str:
+    """ノートと同フォルダにある画像ファイルのパスを返す（同名優先）。"""
+    parent = note_path.parent
+    stem = note_path.stem
+    for ext in IMAGE_EXTENSIONS:
+        candidate = parent / f"{stem}{ext}"
+        if candidate.exists():
+            return str(candidate)
+    for ext in IMAGE_EXTENSIONS:
+        found = list(parent.glob(f"*{ext}"))
+        if found:
+            return str(found[0])
+    return ""
 
 
 # ============================================================
@@ -400,6 +479,218 @@ def migrate_from_sheets(csv_text: str) -> str:
         f"  合計セッション数: {len(all_sessions)}件\n"
         f"  保存先: {DATA_PATH}"
     )
+
+
+# ============================================================
+# Obsidian 連携ツール
+# ============================================================
+
+@mcp.tool()
+def import_from_obsidian(filename: str = "") -> str:
+    """
+    Obsidianの読書ノートをbooks.jsonに取り込む。
+    filenameを省略すると01_読書ノートフォルダの全ノートを取り込む。
+
+    マッピング:
+    - H1タイトル → タイトル
+    - 著者 → author
+    - 読み始め → 日付
+    - ジャンル → genre
+    - この本を読む目的 → 目的
+    - 重要ポイント＋刺さった言葉＋自分の言葉で要約 → メモ
+    - すぐ実行すること → 回答
+    - モード → "通常"（固定）
+    """
+    if not OBSIDIAN_PATH.exists():
+        return f"⚠️ Obsidianフォルダが見つかりません: {OBSIDIAN_PATH}"
+
+    if filename:
+        name = filename if filename.endswith(".md") else f"{filename}.md"
+        targets = [OBSIDIAN_PATH / name]
+    else:
+        targets = sorted(OBSIDIAN_PATH.glob("*.md"))
+
+    if not targets:
+        return "⚠️ 対象のMarkdownファイルが見つかりませんでした。"
+
+    sessions = _load()
+    added = 0
+    skipped = 0
+    errors: list[str] = []
+
+    for filepath in targets:
+        if not filepath.exists():
+            errors.append(f"ファイルが見つかりません: {filepath.name}")
+            continue
+        try:
+            parsed = _parse_obsidian_note(filepath)
+        except Exception as e:
+            errors.append(f"{filepath.name}: パース失敗 ({e})")
+            continue
+
+        title = parsed["title"]
+        if not title:
+            errors.append(f"{filepath.name}: タイトルが取得できませんでした")
+            continue
+
+        # 同タイトルの既存 book_id を引き継ぐ
+        book_id = ""
+        for s in sessions:
+            if s.get("タイトル") == title:
+                book_id = s.get("book_id", "")
+                break
+        if not book_id:
+            book_id = str(uuid.uuid4())[:8]
+
+        cover_image = _find_cover_image(filepath)
+        entry: dict = {
+            "session_id": str(uuid.uuid4()),
+            "日付": parsed["date"],
+            "book_id": book_id,
+            "タイトル": title,
+            "author": parsed["author"],
+            "genre": parsed["genre"],
+            "目的": parsed["purpose"],
+            "メモ": parsed["memo"],
+            "回答": parsed["answer"],
+            "モード": "通常",
+        }
+        if cover_image:
+            entry["cover_image"] = cover_image
+
+        sessions.append(entry)
+        added += 1
+
+    _save(sessions)
+
+    lines = [f"✅ Obsidianインポート完了", f"  追加: {added}件 / スキップ: {skipped}件"]
+    if errors:
+        lines.append("\n⚠️ エラー:")
+        lines.extend(f"  - {e}" for e in errors)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def export_to_obsidian(book_id: str = "", overwrite: bool = False) -> str:
+    """
+    books.jsonの読書データをObsidianノートとして書き出す。
+    book_idを省略すると全データを書き出す。
+    既存ファイルはoverwrite=Trueの場合のみ上書き。
+    ファイル名はタイトル.mdとする。
+    """
+    if not OBSIDIAN_PATH.exists():
+        return f"⚠️ Obsidianフォルダが見つかりません: {OBSIDIAN_PATH}"
+
+    sessions = _load()
+    if not sessions:
+        return "⚠️ books.jsonにデータがありません。"
+
+    # book_idごとに最新セッションを集約
+    books: dict[str, dict] = {}
+    for s in sessions:
+        bid = s.get("book_id", "")
+        if not bid:
+            continue
+        if book_id and bid != book_id:
+            continue
+        if bid not in books or s.get("日付", "") >= books[bid].get("日付", ""):
+            books[bid] = s
+
+    if book_id and not books:
+        return f"⚠️ book_id '{book_id}' が見つかりませんでした。"
+
+    exported = 0
+    skipped = 0
+    errors: list[str] = []
+
+    _UNSAFE_CHARS = str.maketrans({
+        "/": "／", "\\": "＼", ":": "：", "*": "＊",
+        "?": "？", '"': "”", "<": "＜", ">": "＞", "|": "｜",
+    })
+
+    for session in books.values():
+        title = session.get("タイトル", "")
+        if not title:
+            continue
+
+        safe_title = title.translate(_UNSAFE_CHARS)
+        filepath = OBSIDIAN_PATH / f"{safe_title}.md"
+
+        if filepath.exists() and not overwrite:
+            skipped += 1
+            continue
+
+        # メモを【キー】形式で分解（インポート時の形式に対応）
+        memo = session.get("メモ", "")
+        key_pat = re.compile(
+            r"【(重要ポイント|刺さった言葉|自分の言葉で要約)】\n(.*?)(?=\n\n【|\Z)",
+            re.DOTALL,
+        )
+        memo_dict = {m.group(1): m.group(2).strip() for m in key_pat.finditer(memo)}
+        important = memo_dict.get("重要ポイント", memo if not memo_dict else "")
+        touching = memo_dict.get("刺さった言葉", "")
+        summary = memo_dict.get("自分の言葉で要約", "")
+
+        content = (
+            f"# {title}\n\n"
+            f"## 著者\n{session.get('author', '')}\n\n"
+            f"## 読み始め / 読了日\n{session.get('日付', '')}\n\n"
+            f"## ジャンル\n{session.get('genre', '')}\n\n"
+            f"## 評価\n\n"
+            f"## この本を読む目的\n{session.get('目的', '')}\n\n"
+            f"## 重要ポイント\n{important}\n\n"
+            f"## 刺さった言葉\n{touching}\n\n"
+            f"## 自分の言葉で要約\n{summary}\n\n"
+            f"## 仕事に使うなら\n\n"
+            f"## 副業に使うなら\n\n"
+            f"## すぐ実行すること\n{session.get('回答', '')}\n\n"
+            f"## 関連ノート\n"
+        )
+
+        try:
+            filepath.write_text(content, encoding="utf-8")
+            exported += 1
+        except Exception as e:
+            errors.append(f"{title}: 書き込み失敗 ({e})")
+
+    lines = [
+        f"✅ Obsidianエクスポート完了",
+        f"  書き出し: {exported}件 / スキップ（既存）: {skipped}件",
+    ]
+    if errors:
+        lines.append("\n⚠️ エラー:")
+        lines.extend(f"  - {e}" for e in errors)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def list_obsidian_notes() -> str:
+    """
+    Obsidianの01_読書ノートフォルダのノート一覧を返す。
+    ファイル名・更新日・タイトルを一覧表示する。
+    """
+    if not OBSIDIAN_PATH.exists():
+        return f"⚠️ Obsidianフォルダが見つかりません: {OBSIDIAN_PATH}"
+
+    notes = sorted(OBSIDIAN_PATH.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not notes:
+        return "📂 Obsidianフォルダにノートが見つかりませんでした。"
+
+    lines = [f"📚 Obsidianノート一覧（{len(notes)}件）\n"]
+    for note in notes:
+        mtime = datetime.fromtimestamp(note.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        title = ""
+        try:
+            for line in note.read_text(encoding="utf-8").splitlines():
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+        except Exception:
+            pass
+        title = title or note.stem
+        lines.append(f"📄 {note.name}\n   更新: {mtime} | タイトル: {title}")
+
+    return "\n".join(lines)
 
 
 # ============================================================
