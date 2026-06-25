@@ -1,5 +1,6 @@
 # データファイル（個人データのため除外）
 mcp/books.json
+investment/investment.db
 
 # Mac
 .DS_Store
