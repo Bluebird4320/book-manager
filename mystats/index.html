@@ -419,7 +419,7 @@ const FIELD_TYPES = {
 };
 
 const COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6','#64748b'];
-const EMOJIS = ['📚','🏃','💰','🩺','🌲','✏️','📄','⭐','🎯','🍽️','💪','🎸','🐶','☕','🧘','🚴'];
+const EMOJIS = ['📚','🏃','💰','🩺','✏️','📄','⭐','🎯','🍽️','💪','🎸','🐶','☕','🧘','🚴','📷'];
 
 /* 仕様書 F-2付録: ジャンルテンプレートと基本項目 */
 const TEMPLATES = [
@@ -447,12 +447,6 @@ const TEMPLATES = [
       { name:'体重', type:'number', unit:'kg', required:false },
       { name:'睡眠時間', type:'number', unit:'時間', required:false },
       { name:'気分', type:'rating', required:false },
-    ]},
-  { key:'facility', name:'施設運営', icon:'🌲', color:'#0ea5e9', desc:'来場者数・売上・天気',
-    fields: [
-      { name:'来場者数', type:'number', unit:'人', required:true },
-      { name:'売上', type:'number', unit:'円', required:false },
-      { name:'天気', type:'select', options:['晴れ','曇り','雨','雪'], required:false },
     ]},
   { key:'study', name:'学習', icon:'✏️', color:'#8b5cf6', desc:'教材・時間・理解度',
     fields: [
