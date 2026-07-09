@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <title>MyStats - 汎用統計トラッカー</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -223,6 +223,38 @@ main{max-width:960px;margin:0 auto;padding:16px 16px 96px}
 #toast.show{opacity:1}
 .danger-zone{border:1px solid #fecaca;border-radius:12px;padding:14px;margin-top:20px}
 .danger-zone h3{font-size:13px;color:var(--danger);margin-bottom:8px}
+
+/* 全体ストリーク(ダッシュボード) */
+.global-streak{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--surface);border-radius:999px;box-shadow:var(--shadow);
+  padding:7px 16px;font-size:14px;font-weight:800;color:#ea580c;margin-bottom:14px;
+}
+
+/* ===== ダークモード(prefers-color-scheme) ===== */
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f172a;
+    --surface:#1e293b;
+    --text:#f1f5f9;
+    --text-sub:#94a3b8;
+    --border:#334155;
+    --shadow:0 1px 3px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.3);
+  }
+  .tpl-card:active,.tpl-card.selected,.emoji-row button.selected{background:#312e81}
+  .badge.preset{background:#312e81;color:#c7d2fe}
+  .badge.req{background:#7f1d1d;color:#fecaca}
+  .streak-badge{background:#431407;color:#fdba74}
+  .global-streak{color:#fdba74}
+  .btn.secondary{background:#334155;color:var(--text)}
+  .btn.danger{background:#450a0a;color:#fca5a5}
+  .banner.warn{background:#422006;color:#fde68a;border-color:#92400e}
+  .banner.error{background:#450a0a;color:#fecaca;border-color:#7f1d1d}
+  .rating-input .star{color:#475569}
+  .rating-input .star.on{color:#f59e0b}
+  .danger-zone{border-color:#7f1d1d}
+  #toast{background:#f1f5f9;color:#0f172a}
+}
 </style>
 </head>
 <body>
@@ -387,53 +419,48 @@ const FIELD_TYPES = {
 };
 
 const COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6','#64748b'];
-const EMOJIS = ['📚','🏃','💰','🌡️','🏢','✏️','⭐','🎯','🍽️','💪','🎸','🐶','☕','🧘','🚴','📷'];
+const EMOJIS = ['📚','🏃','💰','🩺','🌲','✏️','📄','⭐','🎯','🍽️','💪','🎸','🐶','☕','🧘','🚴'];
 
+/* 仕様書 F-2付録: ジャンルテンプレートと基本項目 */
 const TEMPLATES = [
-  { key:'reading', name:'読書', icon:'📚', color:'#6366f1', desc:'本・ページ数・評価',
+  { key:'reading', name:'読書', icon:'📚', color:'#6366f1', desc:'書名・ページ数・評価',
     fields: [
       { name:'書名', type:'text', required:true },
-      { name:'ページ数', type:'number', unit:'ページ', required:false },
-      { name:'読書時間', type:'number', unit:'分', required:false },
+      { name:'ページ数', type:'number', unit:'p', required:false },
       { name:'評価', type:'rating', required:false },
       { name:'読了', type:'check', required:false },
     ]},
-  { key:'exercise', name:'運動', icon:'🏃', color:'#10b981', desc:'種目・時間・距離',
+  { key:'exercise', name:'運動', icon:'🏃', color:'#10b981', desc:'種目・距離・時間',
     fields: [
-      { name:'種目', type:'select', options:['ランニング','ウォーキング','筋トレ','ヨガ','その他'], required:true },
-      { name:'時間', type:'number', unit:'分', required:false },
+      { name:'種目', type:'text', required:false },
       { name:'距離', type:'number', unit:'km', required:false },
-      { name:'きつさ', type:'rating', required:false },
+      { name:'時間', type:'number', unit:'分', required:false },
     ]},
-  { key:'expense', name:'支出', icon:'💰', color:'#f59e0b', desc:'金額・カテゴリ',
+  { key:'expense', name:'支出', icon:'💰', color:'#f59e0b', desc:'内容・金額・カテゴリ',
     fields: [
+      { name:'内容', type:'text', required:false },
       { name:'金額', type:'number', unit:'円', required:true },
-      { name:'カテゴリ', type:'select', options:['食費','日用品','交通費','娯楽','医療','その他'], required:true },
-      { name:'店名・内容', type:'text', required:false },
+      { name:'カテゴリ', type:'select', options:['食費','日用品','交通費','娯楽','医療','その他'], required:false },
     ]},
-  { key:'health', name:'体調', icon:'🌡️', color:'#ef4444', desc:'体重・睡眠・気分',
+  { key:'health', name:'体調', icon:'🩺', color:'#ef4444', desc:'体重・睡眠・気分',
     fields: [
       { name:'体重', type:'number', unit:'kg', required:false },
       { name:'睡眠時間', type:'number', unit:'時間', required:false },
       { name:'気分', type:'rating', required:false },
-      { name:'症状', type:'text', required:false },
-      { name:'服薬', type:'check', required:false },
     ]},
-  { key:'facility', name:'施設運営', icon:'🏢', color:'#0ea5e9', desc:'来場者数・売上',
+  { key:'facility', name:'施設運営', icon:'🌲', color:'#0ea5e9', desc:'来場者数・売上・天気',
     fields: [
       { name:'来場者数', type:'number', unit:'人', required:true },
       { name:'売上', type:'number', unit:'円', required:false },
       { name:'天気', type:'select', options:['晴れ','曇り','雨','雪'], required:false },
-      { name:'イベント実施', type:'check', required:false },
     ]},
-  { key:'study', name:'学習', icon:'✏️', color:'#8b5cf6', desc:'科目・時間・理解度',
+  { key:'study', name:'学習', icon:'✏️', color:'#8b5cf6', desc:'教材・時間・理解度',
     fields: [
-      { name:'科目', type:'select', options:['英語','資格','プログラミング','その他'], required:true },
+      { name:'教材', type:'text', required:false },
       { name:'学習時間', type:'number', unit:'分', required:true },
       { name:'理解度', type:'rating', required:false },
-      { name:'学習内容', type:'text', required:false },
     ]},
-  { key:'custom', name:'カスタム', icon:'⭐', color:'#64748b', desc:'項目を自由に定義',
+  { key:'custom', name:'カスタム', icon:'📄', color:'#64748b', desc:'項目を自由に定義',
     fields: [] },
 ];
 
@@ -457,10 +484,21 @@ function openModal(html){
   ov.className = 'overlay';
   ov.innerHTML = `<div class="modal">${html}</div>`;
   document.body.appendChild(ov);
+  let closed = false;
+  const closeFns = [];
+  const onKey = e => { if (e.key === 'Escape') api.close(); };
   const api = {
     el: ov,
-    close(){ ov.remove(); },
+    close(){
+      if (closed) return;
+      closed = true;
+      ov.remove();
+      document.removeEventListener('keydown', onKey);
+      closeFns.forEach(f => f());
+    },
+    onClose(f){ closeFns.push(f); },
   };
+  document.addEventListener('keydown', onKey);
   ov.addEventListener('click', e => { if (e.target === ov) api.close(); });
   return api;
 }
@@ -489,6 +527,7 @@ const routes = [
 
 async function route(){
   if (typeof destroyCharts === 'function') destroyCharts(); // 画面遷移時にグラフを破棄
+  $$('.overlay').forEach(o => o.remove()); // 取り残されたモーダルを閉じる(戻るボタン等)
   const hash = location.hash || '#/';
   for (const r of routes) {
     const m = hash.match(r.re);
@@ -529,9 +568,15 @@ async function renderDashboard(){
     return;
   }
 
-  html += `<div class="genre-grid" id="genre-grid"></div>`;
+  // 全ジャンル合算の連続記録日数(F-4-6)
+  const globalStreak = calcStreak(await db.getAll('records'));
+  if (globalStreak > 0) html += `<div class="global-streak">🔥 連続記録 ${globalStreak}日</div>`;
+
+  html += `<div class="genre-grid" id="genre-grid"></div>
+    <button class="fab" id="fab-dash" aria-label="記録する">＋</button>`;
   view.innerHTML = html;
   wireBackupBanner();
+  $('#fab-dash').onclick = () => openQuickRecordPicker();
 
   const grid = $('#genre-grid');
   for (const g of genres) {
@@ -590,6 +635,27 @@ async function genreCardEl(g){
     location.hash = `#/genre/${g.id}`;
   });
   return el;
+}
+
+/* ダッシュボードFAB: ジャンル選択(前回選択を記憶)→ 記録入力(S-3) */
+async function openQuickRecordPicker(){
+  const genres = (await db.getAll('genres')).sort((a, b) => a.order - b.order);
+  if (!genres.length) { openGenreCreateModal(); return; }
+  if (genres.length === 1) { openRecordModal(genres[0]); return; }
+  const last = await db.getMeta('lastGenreId');
+  const m = openModal(`
+    <h2>どのジャンルに記録しますか?</h2>
+    <div class="tpl-grid">
+      ${genres.map(g => `
+        <button class="tpl-card ${g.id === last ? 'selected' : ''}" data-gid="${g.id}">
+          <span class="tpl-icon">${esc(g.icon)}</span>${esc(g.name)}
+        </button>`).join('')}
+    </div>`);
+  $$('.tpl-card', m.el).forEach(b => b.onclick = () => {
+    const g = genres.find(x => x.id === b.dataset.gid);
+    m.close();
+    openRecordModal(g);
+  });
 }
 
 /* 連続記録日数(今日または昨日を起点に遡る) */
@@ -715,8 +781,8 @@ function openGenreCreateModal(){
       };
       await db.put('genres', genre);
       m.close();
-      toast(`ジャンル「${name}」を作成しました`);
-      location.hash = `#/genre/${genre.id}`; // hashchange経由で再描画される
+      toast(`ジャンル「${name}」を作成しました。項目を確認・追加できます`);
+      location.hash = `#/genre/${genre.id}/edit`; // S-4へ遷移し追加項目の定義へ誘導(設計書 S-6)
     };
   }
 }
@@ -724,7 +790,7 @@ function openGenreCreateModal(){
 /* =====================================================
  * ジャンル画面(#/genre/:id) 記録一覧 / 統計
  * ===================================================== */
-let genreTab = 'records'; // 'records' | 'stats'
+let genreTab = 'stats'; // 'stats' | 'records'(設計書 S-2: タブは[統計][記録一覧]の順)
 let recordListLimit = 50;
 
 async function renderGenre(id){
@@ -741,8 +807,8 @@ async function renderGenre(id){
   const view = $('#view');
   view.innerHTML = `
     <div class="tabs">
-      <button id="tab-records" class="${genreTab === 'records' ? 'active' : ''}">記録一覧</button>
       <button id="tab-stats" class="${genreTab === 'stats' ? 'active' : ''}">統計</button>
+      <button id="tab-records" class="${genreTab === 'records' ? 'active' : ''}">記録一覧</button>
     </div>
     <div id="tab-body"></div>
     <button class="fab" id="fab-add" aria-label="記録を追加">＋</button>`;
@@ -778,13 +844,14 @@ function renderRecordList(g, records){
     if (!item) return;
     const rec = records.find(r => r.id === item.dataset.id);
     if (!rec) return;
-    if (e.target.closest('[data-edit]')) { openRecordModal(g, rec); return; }
     if (e.target.closest('[data-del]')) {
       if (!confirm(`${dateLabel(rec.date)} の記録を削除しますか?`)) return; // 記録1件: confirm 1回
       await db.delete('records', rec.id);
       toast('記録を削除しました');
       renderGenre(g.id);
+      return;
     }
+    openRecordModal(g, rec); // 行タップ(または✏️)で編集モーダル(設計書 S-2)
   });
   const more = $('#btn-more');
   if (more) more.onclick = () => { recordListLimit += 100; renderGenre(g.id); };
@@ -813,14 +880,18 @@ function recordItemHTML(r, fields){
 
 /* ---- 統計タブ ---- */
 const PERIODS = [
+  { key: 'thisWeek',  label: '今週' },
   { key: 'thisMonth', label: '今月' },
   { key: 'lastMonth', label: '先月' },
   { key: 'thisYear',  label: '今年' },
   { key: 'all',       label: '全期間' },
+  { key: 'custom',    label: '任意期間' },
 ];
 let statsPeriod = 'thisMonth';
+let statsCustomFrom = '';       // 任意期間(F-4-4)
+let statsCustomTo = '';
 let statsChartFieldId = null;   // メイングラフの対象項目
-let statsGranularity = null;    // 'day' | 'month'(null=期間に応じて自動)
+let statsGranularity = null;    // 'day' | 'week' | 'month'(null=期間に応じて自動)
 let chartInstances = [];
 
 function destroyCharts(){
@@ -828,22 +899,36 @@ function destroyCharts(){
   chartInstances = [];
 }
 
+/* その日を含む週の月曜日("YYYY-MM-DD") */
+function weekStartOf(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return fmtDate(d);
+}
+
 /* 期間 -> [開始日, 終了日](nullは無制限) */
 function periodRange(period){
   const now = new Date();
   const y = now.getFullYear(), mo = now.getMonth();
   switch (period) {
+    case 'thisWeek': {
+      const mon = weekStartOf(todayStr());
+      const sun = new Date(mon + 'T00:00:00');
+      sun.setDate(sun.getDate() + 6);
+      return [mon, fmtDate(sun)];
+    }
     case 'thisMonth': return [fmtDate(new Date(y, mo, 1)), fmtDate(new Date(y, mo + 1, 0))];
     case 'lastMonth': return [fmtDate(new Date(y, mo - 1, 1)), fmtDate(new Date(y, mo, 0))];
     case 'thisYear':  return [`${y}-01-01`, `${y}-12-31`];
+    case 'custom':    return [statsCustomFrom || null, statsCustomTo || null];
     default:          return [null, null];
   }
 }
 
 function filterByPeriod(records, period){
   const [from, to] = periodRange(period);
-  if (!from) return records;
-  return records.filter(r => r.date >= from && r.date <= to);
+  if (!from && !to) return records;
+  return records.filter(r => (!from || r.date >= from) && (!to || r.date <= to));
 }
 
 /* 集計エンジン: 数値項目の 合計/平均/最大/最小/件数 */
@@ -875,11 +960,13 @@ function aggregateDistribution(records, field){
   return dist;
 }
 
-/* 時系列集計: granularity='day'|'month'、数値項目は日/月ごとの合計、なければ件数 */
+/* 時系列集計: granularity='day'|'week'|'month'、数値項目は期間ごとの合計、なければ件数 */
 function timeSeries(records, fieldId, granularity){
   const bucket = {};
   for (const r of records) {
-    const key = granularity === 'month' ? r.date.slice(0, 7) : r.date;
+    const key = granularity === 'month' ? r.date.slice(0, 7)
+              : granularity === 'week'  ? weekStartOf(r.date)  // 週は月曜日をキーにする
+              : r.date;
     let v = 1;
     if (fieldId) {
       const raw = r.values?.[fieldId];
@@ -891,7 +978,7 @@ function timeSeries(records, fieldId, granularity){
   }
   const keys = Object.keys(bucket).sort();
   if (!keys.length) return { labels: [], data: [] };
-  // 抜けている日/月も0で埋めて連続にする
+  // 抜けている日/週/月も0で埋めて連続にする
   const labels = [], data = [];
   if (granularity === 'day') {
     const d = new Date(keys[0] + 'T00:00:00');
@@ -901,6 +988,15 @@ function timeSeries(records, fieldId, granularity){
       labels.push(k.slice(5).replace('-', '/'));
       data.push(bucket[k] || 0);
       d.setDate(d.getDate() + 1);
+    }
+  } else if (granularity === 'week') {
+    const d = new Date(keys[0] + 'T00:00:00');
+    const end = keys[keys.length - 1];
+    while (fmtDate(d) <= end) {
+      const k = fmtDate(d);
+      labels.push(`${d.getMonth() + 1}/${d.getDate()}週`);
+      data.push(bucket[k] || 0);
+      d.setDate(d.getDate() + 7);
     }
   } else {
     let [y, m] = keys[0].split('-').map(Number);
@@ -930,17 +1026,37 @@ function renderStats(g, records){
   // メイングラフの対象項目(既定: 先頭の数値項目)
   if (statsChartFieldId && !numberFields.some(f => f.id === statsChartFieldId) && statsChartFieldId !== '__count__') statsChartFieldId = null;
   if (!statsChartFieldId) statsChartFieldId = numberFields.length ? numberFields[0].id : '__count__';
-  const gran = statsGranularity || ((statsPeriod === 'thisMonth' || statsPeriod === 'lastMonth') ? 'day' : 'month');
+
+  // 粒度の自動判定(期間が短ければ日次、長ければ月次)
+  let autoGran = 'month';
+  if (statsPeriod === 'thisWeek' || statsPeriod === 'thisMonth' || statsPeriod === 'lastMonth') autoGran = 'day';
+  else if (statsPeriod === 'custom' && statsCustomFrom && statsCustomTo) {
+    const span = (new Date(statsCustomTo) - new Date(statsCustomFrom)) / 86400000;
+    autoGran = span <= 45 ? 'day' : span <= 200 ? 'week' : 'month';
+  }
+  const gran = statsGranularity || autoGran;
 
   let html = `
     <div class="chip-row">
       ${PERIODS.map(p => `<button class="chip ${statsPeriod === p.key ? 'active' : ''}" data-period="${p.key}">${p.label}</button>`).join('')}
     </div>`;
 
+  // 任意期間の日付レンジ入力
+  if (statsPeriod === 'custom') {
+    html += `
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input type="date" id="st-from" value="${esc(statsCustomFrom)}" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:10px;padding:8px;background:var(--surface);color:var(--text)">
+        <span style="color:var(--text-sub)">〜</span>
+        <input type="date" id="st-to" value="${esc(statsCustomTo)}" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:10px;padding:8px;background:var(--surface);color:var(--text)">
+        <button class="btn small" id="st-apply">適用</button>
+      </div>`;
+  }
+
   if (!filtered.length) {
     html += `<div class="empty-state"><div class="big">📈</div><h2>この期間の記録はありません</h2><p>期間を変えるか、記録を追加してください</p></div>`;
     body.innerHTML = html;
     wirePeriodChips(g, records);
+    wireCustomRange(g, records);
     return;
   }
 
@@ -977,19 +1093,21 @@ function renderStats(g, records){
   }
   html += `</div>`;
 
-  // メイングラフ(時系列)
+  // メイングラフ(時系列: 日次=折れ線、週次・月次=棒)
   const chartAvailable = typeof Chart !== 'undefined';
+  const granLabel = gran === 'day' ? '日次' : gran === 'week' ? '週次' : '月次';
   html += `
     <div class="chart-box">
-      <h3>📈 推移(${gran === 'day' ? '日次' : '月次'})</h3>
+      <h3>📈 推移(${granLabel})</h3>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <select id="st-field" class="input" style="flex:1;min-width:120px;padding:6px 10px;font-size:13px">
           ${numberFields.map(f => `<option value="${f.id}" ${statsChartFieldId === f.id ? 'selected' : ''}>${esc(f.name)}(合計)</option>`).join('')}
           <option value="__count__" ${statsChartFieldId === '__count__' ? 'selected' : ''}>記録件数</option>
         </select>
         <div class="tabs" style="margin:0;padding:3px;box-shadow:none;border:1px solid var(--border)">
-          <button id="st-day" class="${gran === 'day' ? 'active' : ''}" style="padding:5px 14px;font-size:12px">日次</button>
-          <button id="st-month" class="${gran === 'month' ? 'active' : ''}" style="padding:5px 14px;font-size:12px">月次</button>
+          <button id="st-day" class="${gran === 'day' ? 'active' : ''}" style="padding:5px 12px;font-size:12px">日</button>
+          <button id="st-week" class="${gran === 'week' ? 'active' : ''}" style="padding:5px 12px;font-size:12px">週</button>
+          <button id="st-month" class="${gran === 'month' ? 'active' : ''}" style="padding:5px 12px;font-size:12px">月</button>
         </div>
       </div>
       ${chartAvailable ? '<div class="chart-wrap"><canvas id="st-main-chart"></canvas></div>'
@@ -1009,14 +1127,21 @@ function renderStats(g, records){
 
   body.innerHTML = html;
   wirePeriodChips(g, records);
+  wireCustomRange(g, records);
 
   $('#st-field').onchange = e => { statsChartFieldId = e.target.value; renderStats(g, records); };
   $('#st-day').onclick = () => { statsGranularity = 'day'; renderStats(g, records); };
+  $('#st-week').onclick = () => { statsGranularity = 'week'; renderStats(g, records); };
   $('#st-month').onclick = () => { statsGranularity = 'month'; renderStats(g, records); };
 
   if (!chartAvailable) return;
 
-  // メイングラフ描画(日次=折れ線 / 月次=棒)
+  // ダークモードに応じたChart.js既定色
+  const darkMode = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  Chart.defaults.color = darkMode ? '#94a3b8' : '#64748b';
+  Chart.defaults.borderColor = darkMode ? 'rgba(148,163,184,.18)' : 'rgba(100,116,139,.15)';
+
+  // メイングラフ描画(日次=折れ線 / 週次・月次=棒)
   const fieldId = statsChartFieldId === '__count__' ? null : statsChartFieldId;
   const ts = timeSeries(filtered, fieldId, gran);
   const fieldDef = fieldId ? numberFields.find(f => f.id === fieldId) : null;
@@ -1059,7 +1184,7 @@ function renderStats(g, records){
       type: 'doughnut',
       data: {
         labels: entries.map(([k]) => k),
-        datasets: [{ data: entries.map(([, n]) => n), backgroundColor: DONUT_COLORS.slice(0, entries.length), borderWidth: 2, borderColor: '#fff' }],
+        datasets: [{ data: entries.map(([, n]) => n), backgroundColor: DONUT_COLORS.slice(0, entries.length), borderWidth: 2, borderColor: darkMode ? '#1e293b' : '#fff' }],
       },
       options: {
         responsive: true, maintainAspectRatio: false, cutout: '60%',
@@ -1073,8 +1198,24 @@ function wirePeriodChips(g, records){
   $$('.chip[data-period]').forEach(c => c.onclick = () => {
     statsPeriod = c.dataset.period;
     statsGranularity = null; // 期間変更時は自動粒度に戻す
+    if (statsPeriod === 'custom' && !statsCustomFrom) {
+      // 初回は今月をデフォルトにする
+      statsCustomFrom = todayStr().slice(0, 7) + '-01';
+      statsCustomTo = todayStr();
+    }
     renderStats(g, records);
   });
+}
+
+function wireCustomRange(g, records){
+  const apply = $('#st-apply');
+  if (!apply) return;
+  apply.onclick = () => {
+    statsCustomFrom = $('#st-from').value;
+    statsCustomTo = $('#st-to').value;
+    statsGranularity = null;
+    renderStats(g, records);
+  };
 }
 
 /* =====================================================
@@ -1206,6 +1347,7 @@ function openRecordModal(genre, record = null){
       ? { ...record, date, values, memo: $('#rec-memo', m.el).value.trim(), updatedAt: now }
       : { id: uid(), genreId: genre.id, date, values, memo: $('#rec-memo', m.el).value.trim(), createdAt: now, updatedAt: now };
     await db.put('records', rec);
+    await db.setMeta('lastGenreId', genre.id); // FABのジャンル選択で前回選択を記憶
     m.close();
     toast(isEdit ? '記録を更新しました' : '記録を保存しました');
     route();
@@ -1403,7 +1545,7 @@ function openFieldEditModal(genre, field){
     // 記録が1件以上ある項目の型変更は、影響件数を示して確認
     if (isEdit && type !== field.type) {
       const n = await countRecordsWithField(genre.id, field.id);
-      if (n > 0 && !confirm(`この項目には ${n}件 の記録の値があります。\n型を「${FIELD_TYPES[field.type].label}」から「${FIELD_TYPES[type].label}」に変更すると、既存の値が正しく表示・集計されない場合があります。\n\n変更しますか?`)) {
+      if (n > 0 && !confirm(`この項目には ${n}件 の記録の値があります。\n型を「${FIELD_TYPES[field.type].label}」から「${FIELD_TYPES[type].label}」に変更すると、既存の値が正しく表示・集計されない場合があります。\n(推奨: 型は変更せず、新しい項目として追加する)\n\nそれでも変更しますか?`)) {
         return;
       }
     }
@@ -1483,7 +1625,7 @@ async function exportJSON(){
     exportedAt: new Date().toISOString(),
     genres, records,
   };
-  downloadFile(`mystats-backup-${todayStr()}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  downloadFile(`mystats_backup_${todayStr().replace(/-/g, '')}.json`, JSON.stringify(payload, null, 2), 'application/json');
   await db.setMeta('lastExportAt', payload.exportedAt);
   toast('JSONをエクスポートしました');
 }
@@ -1493,6 +1635,7 @@ function validateImport(obj){
   const errors = [];
   if (!obj || typeof obj !== 'object') return ['JSONの形式が不正です'];
   if (obj.app !== 'mystats') errors.push('MyStatsのバックアップファイルではありません(appキー不一致)');
+  if (obj.version !== 1) errors.push(`対応していないバージョンです(version: ${obj.version ?? 'なし'})`);
   if (!Array.isArray(obj.genres)) errors.push('genres が配列ではありません');
   if (!Array.isArray(obj.records)) errors.push('records が配列ではありません');
   if (errors.length) return errors;
@@ -1568,7 +1711,7 @@ function askImportMode(nGenres, nRecords){
     $('#im-replace', m.el).onclick = () => finish('replace');
     $('#im-newid', m.el).onclick = () => finish('newid');
     $('#im-cancel', m.el).onclick = () => finish(null);
-    m.el.addEventListener('click', e => { if (e.target === m.el) finish(null); });
+    m.onClose(() => finish(null)); // 背景タップ・Escで閉じた場合はキャンセル扱い
   });
 }
 
