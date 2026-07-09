@@ -488,6 +488,7 @@ const routes = [
 ];
 
 async function route(){
+  if (typeof destroyCharts === 'function') destroyCharts(); // 画面遷移時にグラフを破棄
   const hash = location.hash || '#/';
   for (const r of routes) {
     const m = hash.match(r.re);
@@ -811,9 +812,270 @@ function recordItemHTML(r, fields){
     </div>`;
 }
 
-/* ---- 統計タブ(Phase 2 で実装) ---- */
+/* ---- 統計タブ ---- */
+const PERIODS = [
+  { key: 'thisMonth', label: '今月' },
+  { key: 'lastMonth', label: '先月' },
+  { key: 'thisYear',  label: '今年' },
+  { key: 'all',       label: '全期間' },
+];
+let statsPeriod = 'thisMonth';
+let statsChartFieldId = null;   // メイングラフの対象項目
+let statsGranularity = null;    // 'day' | 'month'(null=期間に応じて自動)
+let chartInstances = [];
+
+function destroyCharts(){
+  for (const c of chartInstances) { try { c.destroy(); } catch(e){} }
+  chartInstances = [];
+}
+
+/* 期間 -> [開始日, 終了日](nullは無制限) */
+function periodRange(period){
+  const now = new Date();
+  const y = now.getFullYear(), mo = now.getMonth();
+  switch (period) {
+    case 'thisMonth': return [fmtDate(new Date(y, mo, 1)), fmtDate(new Date(y, mo + 1, 0))];
+    case 'lastMonth': return [fmtDate(new Date(y, mo - 1, 1)), fmtDate(new Date(y, mo, 0))];
+    case 'thisYear':  return [`${y}-01-01`, `${y}-12-31`];
+    default:          return [null, null];
+  }
+}
+
+function filterByPeriod(records, period){
+  const [from, to] = periodRange(period);
+  if (!from) return records;
+  return records.filter(r => r.date >= from && r.date <= to);
+}
+
+/* 集計エンジン: 数値項目の 合計/平均/最大/最小/件数 */
+function aggregateNumber(records, fieldId){
+  let sum = 0, max = -Infinity, min = Infinity, count = 0;
+  for (const r of records) {
+    const v = r.values?.[fieldId];
+    if (v === undefined || v === null || v === '') continue;
+    const n = Number(v);
+    if (!isFinite(n)) continue;
+    sum += n; count++;
+    if (n > max) max = n;
+    if (n < min) min = n;
+  }
+  return { sum, avg: count ? sum / count : 0, max: count ? max : 0, min: count ? min : 0, count };
+}
+
+/* select / rating の内訳 {ラベル: 件数} */
+function aggregateDistribution(records, field){
+  const dist = {};
+  if (field.type === 'select') for (const o of field.options || []) dist[o] = 0;
+  if (field.type === 'rating') for (let i = 1; i <= 5; i++) dist['★' + i] = 0;
+  for (const r of records) {
+    const v = r.values?.[field.id];
+    if (v === undefined || v === null || v === '') continue;
+    const key = field.type === 'rating' ? '★' + v : String(v);
+    dist[key] = (dist[key] || 0) + 1;
+  }
+  return dist;
+}
+
+/* 時系列集計: granularity='day'|'month'、数値項目は日/月ごとの合計、なければ件数 */
+function timeSeries(records, fieldId, granularity){
+  const bucket = {};
+  for (const r of records) {
+    const key = granularity === 'month' ? r.date.slice(0, 7) : r.date;
+    let v = 1;
+    if (fieldId) {
+      const raw = r.values?.[fieldId];
+      if (raw === undefined || raw === null || raw === '') continue;
+      v = Number(raw);
+      if (!isFinite(v)) continue;
+    }
+    bucket[key] = (bucket[key] || 0) + v;
+  }
+  const keys = Object.keys(bucket).sort();
+  if (!keys.length) return { labels: [], data: [] };
+  // 抜けている日/月も0で埋めて連続にする
+  const labels = [], data = [];
+  if (granularity === 'day') {
+    const d = new Date(keys[0] + 'T00:00:00');
+    const end = keys[keys.length - 1];
+    while (fmtDate(d) <= end) {
+      const k = fmtDate(d);
+      labels.push(k.slice(5).replace('-', '/'));
+      data.push(bucket[k] || 0);
+      d.setDate(d.getDate() + 1);
+    }
+  } else {
+    let [y, m] = keys[0].split('-').map(Number);
+    const end = keys[keys.length - 1];
+    while (true) {
+      const k = `${y}-${String(m).padStart(2, '0')}`;
+      labels.push(`${y}/${m}`);
+      data.push(bucket[k] || 0);
+      if (k >= end) break;
+      m++; if (m > 12) { m = 1; y++; }
+    }
+  }
+  return { labels, data };
+}
+
+const DONUT_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6','#64748b','#14b8a6','#f97316'];
+
 function renderStats(g, records){
-  $('#tab-body').innerHTML = `<div class="empty-state"><div class="big">📈</div><h2>統計は準備中です</h2><p>Phase 2 で実装予定</p></div>`;
+  destroyCharts();
+  const body = $('#tab-body');
+  const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
+  const numberFields = fields.filter(f => f.type === 'number');
+  const distFields = fields.filter(f => f.type === 'select' || f.type === 'rating');
+  const checkFields = fields.filter(f => f.type === 'check');
+  const filtered = filterByPeriod(records, statsPeriod);
+
+  // メイングラフの対象項目(既定: 先頭の数値項目)
+  if (statsChartFieldId && !numberFields.some(f => f.id === statsChartFieldId) && statsChartFieldId !== '__count__') statsChartFieldId = null;
+  if (!statsChartFieldId) statsChartFieldId = numberFields.length ? numberFields[0].id : '__count__';
+  const gran = statsGranularity || ((statsPeriod === 'thisMonth' || statsPeriod === 'lastMonth') ? 'day' : 'month');
+
+  let html = `
+    <div class="chip-row">
+      ${PERIODS.map(p => `<button class="chip ${statsPeriod === p.key ? 'active' : ''}" data-period="${p.key}">${p.label}</button>`).join('')}
+    </div>`;
+
+  if (!filtered.length) {
+    html += `<div class="empty-state"><div class="big">📈</div><h2>この期間の記録はありません</h2><p>期間を変えるか、記録を追加してください</p></div>`;
+    body.innerHTML = html;
+    wirePeriodChips(g, records);
+    return;
+  }
+
+  // サマリーカード
+  html += `<div class="stat-grid">
+    <div class="stat-card"><div class="s-label">記録件数</div><div class="s-value">${fmtNum(filtered.length)}<small> 件</small></div></div>`;
+  for (const f of numberFields) {
+    const a = aggregateNumber(filtered, f.id);
+    const u = f.unit ? ' ' + esc(f.unit) : '';
+    html += `
+      <div class="stat-card">
+        <div class="s-label">${esc(f.name)}(合計)</div>
+        <div class="s-value">${fmtNum(a.sum)}<small>${u}</small></div>
+        <div class="s-sub">平均 ${fmtNum(a.avg)}${u} / 最大 ${fmtNum(a.max)}${u}<br>最小 ${fmtNum(a.min)}${u} / ${fmtNum(a.count)}件</div>
+      </div>`;
+  }
+  for (const f of distFields.filter(x => x.type === 'rating')) {
+    const a = aggregateNumber(filtered, f.id);
+    html += `
+      <div class="stat-card">
+        <div class="s-label">${esc(f.name)}(平均)</div>
+        <div class="s-value">${a.count ? fmtNum(a.avg) : '-'}<small> / 5</small></div>
+        <div class="s-sub">${fmtNum(a.count)}件</div>
+      </div>`;
+  }
+  for (const f of checkFields) {
+    const yes = filtered.filter(r => r.values?.[f.id] === true).length;
+    html += `
+      <div class="stat-card">
+        <div class="s-label">${esc(f.name)}</div>
+        <div class="s-value">${fmtNum(yes)}<small> 回</small></div>
+        <div class="s-sub">記録中 ${filtered.length ? Math.round(yes / filtered.length * 100) : 0}%</div>
+      </div>`;
+  }
+  html += `</div>`;
+
+  // メイングラフ(時系列)
+  const chartAvailable = typeof Chart !== 'undefined';
+  html += `
+    <div class="chart-box">
+      <h3>📈 推移(${gran === 'day' ? '日次' : '月次'})</h3>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <select id="st-field" class="input" style="flex:1;min-width:120px;padding:6px 10px;font-size:13px">
+          ${numberFields.map(f => `<option value="${f.id}" ${statsChartFieldId === f.id ? 'selected' : ''}>${esc(f.name)}(合計)</option>`).join('')}
+          <option value="__count__" ${statsChartFieldId === '__count__' ? 'selected' : ''}>記録件数</option>
+        </select>
+        <div class="tabs" style="margin:0;padding:3px;box-shadow:none;border:1px solid var(--border)">
+          <button id="st-day" class="${gran === 'day' ? 'active' : ''}" style="padding:5px 14px;font-size:12px">日次</button>
+          <button id="st-month" class="${gran === 'month' ? 'active' : ''}" style="padding:5px 14px;font-size:12px">月次</button>
+        </div>
+      </div>
+      ${chartAvailable ? '<div class="chart-wrap"><canvas id="st-main-chart"></canvas></div>'
+        : '<p style="font-size:13px;color:var(--text-sub)">グラフ描画ライブラリ(Chart.js)を読み込めませんでした。オンライン環境で再読み込みしてください。</p>'}
+    </div>`;
+
+  // 内訳ドーナツ(select / rating)
+  if (chartAvailable) {
+    for (const f of distFields) {
+      html += `
+        <div class="chart-box">
+          <h3>🍩 ${esc(f.name)}の内訳</h3>
+          <div class="chart-wrap donut"><canvas data-donut="${f.id}"></canvas></div>
+        </div>`;
+    }
+  }
+
+  body.innerHTML = html;
+  wirePeriodChips(g, records);
+
+  $('#st-field').onchange = e => { statsChartFieldId = e.target.value; renderStats(g, records); };
+  $('#st-day').onclick = () => { statsGranularity = 'day'; renderStats(g, records); };
+  $('#st-month').onclick = () => { statsGranularity = 'month'; renderStats(g, records); };
+
+  if (!chartAvailable) return;
+
+  // メイングラフ描画(日次=折れ線 / 月次=棒)
+  const fieldId = statsChartFieldId === '__count__' ? null : statsChartFieldId;
+  const ts = timeSeries(filtered, fieldId, gran);
+  const fieldDef = fieldId ? numberFields.find(f => f.id === fieldId) : null;
+  const label = fieldDef ? `${fieldDef.name}${fieldDef.unit ? '(' + fieldDef.unit + ')' : ''}` : '記録件数';
+  chartInstances.push(new Chart($('#st-main-chart'), {
+    type: gran === 'day' ? 'line' : 'bar',
+    data: {
+      labels: ts.labels,
+      datasets: [{
+        label,
+        data: ts.data,
+        borderColor: g.color,
+        backgroundColor: gran === 'day' ? g.color + '33' : g.color + 'cc',
+        fill: gran === 'day',
+        tension: 0.3,
+        pointRadius: ts.labels.length > 62 ? 0 : 3,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { font: { size: 11 } } },
+        x: { ticks: { font: { size: 10 }, maxTicksLimit: 12, maxRotation: 0 } },
+      },
+    },
+  }));
+
+  // ドーナツ描画
+  for (const f of distFields) {
+    const dist = aggregateDistribution(filtered, f);
+    const entries = Object.entries(dist).filter(([, n]) => n > 0);
+    const canvas = $(`canvas[data-donut="${f.id}"]`);
+    if (!entries.length) {
+      canvas.closest('.chart-wrap').innerHTML = '<p style="font-size:13px;color:var(--text-sub);text-align:center;padding-top:80px">データがありません</p>';
+      continue;
+    }
+    chartInstances.push(new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: entries.map(([k]) => k),
+        datasets: [{ data: entries.map(([, n]) => n), backgroundColor: DONUT_COLORS.slice(0, entries.length), borderWidth: 2, borderColor: '#fff' }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: { legend: { position: 'right', labels: { font: { size: 12 }, boxWidth: 14 } } },
+      },
+    }));
+  }
+}
+
+function wirePeriodChips(g, records){
+  $$('.chip[data-period]').forEach(c => c.onclick = () => {
+    statsPeriod = c.dataset.period;
+    statsGranularity = null; // 期間変更時は自動粒度に戻す
+    renderStats(g, records);
+  });
 }
 
 /* =====================================================
