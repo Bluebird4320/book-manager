@@ -716,8 +716,7 @@ function openGenreCreateModal(){
       await db.put('genres', genre);
       m.close();
       toast(`ジャンル「${name}」を作成しました`);
-      location.hash = `#/genre/${genre.id}`;
-      if (location.hash === `#/genre/${genre.id}`) route();
+      location.hash = `#/genre/${genre.id}`; // hashchange経由で再描画される
     };
   }
 }
@@ -1463,19 +1462,347 @@ function openGenreDeleteModal(genre, recordCount){
 }
 
 /* =====================================================
- * 設定画面(#/settings) Phase 4 で実装
+ * データ管理(エクスポート/インポート/全削除)
+ * ===================================================== */
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+
+async function exportJSON(){
+  const [genres, records] = await Promise.all([db.getAll('genres'), db.getAll('records')]);
+  const payload = {
+    app: 'mystats',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    genres, records,
+  };
+  downloadFile(`mystats-backup-${todayStr()}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  await db.setMeta('lastExportAt', payload.exportedAt);
+  toast('JSONをエクスポートしました');
+}
+
+/* インポート: スキーマ検証 */
+function validateImport(obj){
+  const errors = [];
+  if (!obj || typeof obj !== 'object') return ['JSONの形式が不正です'];
+  if (obj.app !== 'mystats') errors.push('MyStatsのバックアップファイルではありません(appキー不一致)');
+  if (!Array.isArray(obj.genres)) errors.push('genres が配列ではありません');
+  if (!Array.isArray(obj.records)) errors.push('records が配列ではありません');
+  if (errors.length) return errors;
+  for (const g of obj.genres) {
+    if (!g.id || typeof g.name !== 'string' || !Array.isArray(g.fields)) { errors.push('ジャンルデータの形式が不正です'); break; }
+  }
+  for (const r of obj.records) {
+    if (!r.id || !r.genreId || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) { errors.push('記録データの形式が不正です(id/genreId/date)'); break; }
+  }
+  return errors;
+}
+
+async function importJSON(file){
+  let obj;
+  try { obj = JSON.parse(await file.text()); }
+  catch(e){ alert('JSONの解析に失敗しました: ' + e.message); return; }
+  const errors = validateImport(obj);
+  if (errors.length) { alert('インポートできません:\n・' + errors.join('\n・')); return; }
+
+  const [curGenres, curRecords] = await Promise.all([db.getAll('genres'), db.getAll('records')]);
+  const genreIds = new Set(curGenres.map(g => g.id));
+  const recordIds = new Set(curRecords.map(r => r.id));
+  const dupGenres = obj.genres.filter(g => genreIds.has(g.id));
+  const dupRecords = obj.records.filter(r => recordIds.has(r.id));
+
+  let mode = 'add';
+  if (dupGenres.length || dupRecords.length) {
+    mode = await askImportMode(dupGenres.length, dupRecords.length);
+    if (!mode) return; // キャンセル
+  }
+
+  let genres = obj.genres.map(g => ({ ...g }));
+  let records = obj.records.map(r => ({ ...r }));
+
+  if (mode === 'newid') {
+    // 重複IDのジャンルには新IDを割り当て、配下recordsのgenreIdも付け替える
+    const genreMap = {};
+    for (const g of genres) {
+      if (genreIds.has(g.id)) { const nid = uid(); genreMap[g.id] = nid; g.id = nid; }
+    }
+    for (const r of records) {
+      if (genreMap[r.genreId]) r.genreId = genreMap[r.genreId];
+      if (recordIds.has(r.id)) r.id = uid();
+    }
+  }
+  // mode === 'replace' は同一IDをそのまま put(上書き)
+
+  // 新規追加になるジャンルは既存の後ろに並べる(置換はインポート元のorderを維持)
+  let nextOrder = curGenres.length ? Math.max(...curGenres.map(g => g.order)) + 1 : 0;
+  for (const g of genres) {
+    if (!genreIds.has(g.id)) g.order = nextOrder++;
+  }
+
+  await db.bulkPut('genres', genres);
+  await db.bulkPut('records', records);
+  toast(`インポート完了(ジャンル${genres.length}件・記録${fmtNum(records.length)}件)`);
+  route();
+}
+
+/* 重複ID時の取込方法を選択(置換 / 新IDで取込 / キャンセル) */
+function askImportMode(nGenres, nRecords){
+  return new Promise(resolve => {
+    const m = openModal(`
+      <h2>⚠️ IDが重複しています</h2>
+      <p style="font-size:13px;margin-bottom:14px">
+        既存データとIDが重複しています(ジャンル${nGenres}件・記録${fmtNum(nRecords)}件)。<br>取込方法を選んでください。
+      </p>
+      <button class="btn block" id="im-replace" style="margin-bottom:8px">置換(既存の同IDデータを上書き)</button>
+      <button class="btn secondary block" id="im-newid" style="margin-bottom:8px">新IDで取込(既存を残して複製)</button>
+      <button class="btn secondary block" id="im-cancel">キャンセル</button>`);
+    let done = false;
+    const finish = v => { if (!done) { done = true; m.close(); resolve(v); } };
+    $('#im-replace', m.el).onclick = () => finish('replace');
+    $('#im-newid', m.el).onclick = () => finish('newid');
+    $('#im-cancel', m.el).onclick = () => finish(null);
+    m.el.addEventListener('click', e => { if (e.target === m.el) finish(null); });
+  });
+}
+
+/* ジャンル別CSVエクスポート */
+function csvEscape(v){
+  const s = String(v ?? '');
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+async function exportCSV(genreId){
+  const g = await db.get('genres', genreId);
+  if (!g) return;
+  const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
+  const records = (await db.getRecordsByGenre(genreId)).sort((a, b) => a.date < b.date ? 1 : -1);
+  const header = ['日付', ...fields.map(f => f.name + (f.unit ? `(${f.unit})` : '')), 'メモ'];
+  const lines = [header.map(csvEscape).join(',')];
+  for (const r of records) {
+    const row = [r.date];
+    for (const f of fields) {
+      const v = r.values?.[f.id];
+      row.push(f.type === 'check' ? (v === true ? '1' : '') : (v ?? ''));
+    }
+    row.push(r.memo || '');
+    lines.push(row.map(csvEscape).join(','));
+  }
+  // BOM付きUTF-8(Excel対応)
+  downloadFile(`mystats-${g.name}-${todayStr()}.csv`, '\uFEFF' + lines.join('\r\n'), 'text/csv');
+  toast(`「${g.name}」のCSVをエクスポートしました`);
+}
+
+/* 全データ削除(confirm + "DELETE"入力の二段確認) */
+function openDeleteAllModal(){
+  if (!confirm('すべてのジャンル・記録・設定を削除します。本当によろしいですか?')) return;
+  const m = openModal(`
+    <h2>⚠️ 全データを削除</h2>
+    <p style="font-size:13px;margin-bottom:12px">
+      この操作は<b>元に戻せません</b>。実行するには「<b>DELETE</b>」と入力してください。
+    </p>
+    <div class="form-group">
+      <input type="text" id="da-confirm" placeholder="DELETE" autocomplete="off" autocapitalize="characters">
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" id="da-cancel">キャンセル</button>
+      <button class="btn danger-solid" id="da-delete" disabled>完全に削除する</button>
+    </div>`);
+  const input = $('#da-confirm', m.el);
+  const btn = $('#da-delete', m.el);
+  input.addEventListener('input', () => { btn.disabled = input.value.trim() !== 'DELETE'; });
+  $('#da-cancel', m.el).onclick = () => m.close();
+  btn.onclick = async () => {
+    if (input.value.trim() !== 'DELETE') return;
+    await Promise.all([db.clear('genres'), db.clear('records'), db.clear('meta')]);
+    m.close();
+    toast('すべてのデータを削除しました');
+    location.hash = '#/'; // hashchange経由で再描画される
+  };
+}
+
+/* =====================================================
+ * 設定画面(#/settings)
  * ===================================================== */
 async function renderSettings(){
   setHeader(`
     <button class="icon-btn" onclick="location.hash='#/'" aria-label="戻る">←</button>
     <span class="title">設定</span>
   `);
-  $('#view').innerHTML = `<div class="empty-state"><div class="big">⚙️</div><h2>設定は準備中です</h2><p>Phase 4 で実装予定(エクスポート/インポート/全削除)</p></div>`;
+  const [genres, records, lastExportAt] = await Promise.all([
+    db.getAll('genres'), db.getAll('records'), db.getMeta('lastExportAt'),
+  ]);
+  genres.sort((a, b) => a.order - b.order);
+
+  $('#view').innerHTML = `
+    ${memoryMode ? `<div class="banner error"><span>⚠️</span><span class="b-main">メモリ動作モードです。ページを閉じるとデータは消えます。</span></div>` : ''}
+    <div class="section-title">データ</div>
+    <div class="card">
+      <div class="settings-item">
+        <div class="s-main">
+          <div class="s-title">保存状況</div>
+          <div class="s-desc">ジャンル ${genres.length}件 / 記録 ${fmtNum(records.length)}件 / 保存先: ${memoryMode ? 'メモリ(一時)' : 'IndexedDB'}</div>
+        </div>
+      </div>
+      <div class="settings-item">
+        <div class="s-main">
+          <div class="s-title">JSONエクスポート</div>
+          <div class="s-desc">全データをバックアップ${lastExportAt ? `<br>最終: ${new Date(lastExportAt).toLocaleString('ja-JP')}` : '(未実施)'}</div>
+        </div>
+        <button class="btn small" id="st-export">エクスポート</button>
+      </div>
+      <div class="settings-item">
+        <div class="s-main">
+          <div class="s-title">JSONインポート</div>
+          <div class="s-desc">バックアップから復元・統合</div>
+        </div>
+        <button class="btn small secondary" id="st-import">ファイル選択</button>
+        <input type="file" id="st-import-file" accept=".json,application/json" style="display:none">
+      </div>
+      <div class="settings-item">
+        <div class="s-main">
+          <div class="s-title">CSVエクスポート</div>
+          <div class="s-desc">ジャンル単位で表形式に出力</div>
+        </div>
+      </div>
+      ${genres.length ? `
+      <div style="display:flex;gap:8px;padding:0 2px 12px">
+        <select id="st-csv-genre" class="input" style="flex:1;padding:8px 10px;font-size:14px;border:1.5px solid var(--border);border-radius:10px">
+          ${genres.map(g => `<option value="${g.id}">${esc(g.icon)} ${esc(g.name)}</option>`).join('')}
+        </select>
+        <button class="btn small secondary" id="st-csv">CSV出力</button>
+      </div>` : ''}
+    </div>
+
+    <div class="section-title">アプリについて</div>
+    <div class="card">
+      <div class="settings-item">
+        <div class="s-main">
+          <div class="s-title">MyStats</div>
+          <div class="s-desc">汎用統計トラッカー v1.0 / データはこの端末内にのみ保存されます</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="danger-zone">
+      <h3>⚠️ 危険な操作</h3>
+      <p style="font-size:12px;color:var(--text-sub);margin-bottom:10px">すべてのジャンル・記録・設定を削除します。</p>
+      <button class="btn danger block" id="st-delete-all">全データを削除する</button>
+    </div>`;
+
+  $('#st-export').onclick = () => exportJSON().then(() => renderSettings());
+  $('#st-import').onclick = () => $('#st-import-file').click();
+  $('#st-import-file').onchange = e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) importJSON(file);
+  };
+  const csvBtn = $('#st-csv');
+  if (csvBtn) csvBtn.onclick = () => exportCSV($('#st-csv-genre').value);
+  $('#st-delete-all').onclick = () => openDeleteAllModal();
 }
 
-/* バックアップ促しバナー(Phase 4 で実装) */
-async function backupBannerHTML(){ return ''; }
-function wireBackupBanner(){}
+/* =====================================================
+ * バックアップ促しバナー
+ * (最終エクスポートから30日経過 かつ 記録50件以上)
+ * ===================================================== */
+async function backupBannerHTML(){
+  const records = await db.getAll('records');
+  if (records.length < 50) return '';
+  const last = await db.getMeta('lastExportAt');
+  if (last) {
+    const days = (Date.now() - new Date(last).getTime()) / 86400000;
+    if (days < 30) return '';
+  }
+  return `<div class="banner warn"><span>💾</span><span class="b-main">記録が${fmtNum(records.length)}件あります。${last ? '最終バックアップから30日以上経過しています。' : 'まだバックアップがありません。'}データを守るためエクスポートをおすすめします。</span><button class="btn small" id="banner-export">今すぐ</button></div>`;
+}
+function wireBackupBanner(){
+  const btn = $('#banner-export');
+  if (btn) btn.onclick = () => exportJSON().then(() => route());
+}
+
+/* =====================================================
+ * 開発用ユーティリティ(コンソールから使用)
+ *   mystatsDev.generateDummy(10000)  … ダミー記録を生成
+ *   mystatsDev.benchmark()           … 一覧・集計の所要時間を計測
+ * ===================================================== */
+window.mystatsDev = {
+  async generateDummy(n = 10000){
+    console.time('generateDummy');
+    let genres = await db.getAll('genres');
+    let g = genres.find(x => x.name === 'ダミーデータ');
+    if (!g) {
+      const now = new Date().toISOString();
+      g = {
+        id: uid(), name: 'ダミーデータ', icon: '🎯', color: '#64748b',
+        order: genres.length ? Math.max(...genres.map(x => x.order)) + 1 : 0,
+        fields: [
+          { id: uid(), name: '値', type: 'number', unit: 'pt', required: false, preset: false, order: 0 },
+          { id: uid(), name: '種別', type: 'select', options: ['A', 'B', 'C', 'D'], required: false, preset: false, order: 1 },
+          { id: uid(), name: '満足度', type: 'rating', required: false, preset: false, order: 2 },
+        ],
+        createdAt: now, updatedAt: now,
+      };
+      await db.put('genres', g);
+    }
+    const [fNum, fSel, fRate] = g.fields.map(f => f.id);
+    const now = new Date().toISOString();
+    const batch = [];
+    for (let i = 0; i < n; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - Math.floor(Math.random() * 1095)); // 過去3年
+      batch.push({
+        id: uid(), genreId: g.id, date: fmtDate(d),
+        values: {
+          [fNum]: Math.round(Math.random() * 1000) / 10,
+          [fSel]: ['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)],
+          [fRate]: 1 + Math.floor(Math.random() * 5),
+        },
+        memo: '', createdAt: now, updatedAt: now,
+      });
+      if (batch.length >= 2000) { await db.bulkPut('records', batch.splice(0)); }
+    }
+    if (batch.length) await db.bulkPut('records', batch);
+    console.timeEnd('generateDummy');
+    console.log(`ダミー記録を${n}件生成しました(ジャンル: ダミーデータ)`);
+    route();
+    return g.id;
+  },
+
+  /* 一覧描画・集計が1秒以内かを計測 */
+  async benchmark(genreId){
+    let g = genreId ? await db.get('genres', genreId) : (await db.getAll('genres')).find(x => x.name === 'ダミーデータ');
+    if (!g) { console.log('ダミーデータのジャンルがありません。先に generateDummy() を実行してください。'); return; }
+    let t0 = performance.now();
+    const records = await db.getRecordsByGenre(g.id);
+    const tLoad = performance.now() - t0;
+
+    t0 = performance.now();
+    records.sort((a, b) => b.date < a.date ? -1 : b.date > a.date ? 1 : 0);
+    const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
+    records.slice(0, 50).map(r => recordItemHTML(r, fields)).join('');
+    const tList = performance.now() - t0;
+
+    t0 = performance.now();
+    const filtered = filterByPeriod(records, 'all');
+    for (const f of fields) {
+      if (f.type === 'number' || f.type === 'rating') aggregateNumber(filtered, f.id);
+      if (f.type === 'select' || f.type === 'rating') aggregateDistribution(filtered, f);
+    }
+    timeSeries(filtered, fields[0]?.id, 'month');
+    const tAgg = performance.now() - t0;
+
+    const result = { 件数: records.length, 読込ms: Math.round(tLoad), 一覧ms: Math.round(tList), 集計ms: Math.round(tAgg) };
+    console.table ? console.table([result]) : console.log(result);
+    return result;
+  },
+};
 
 /* ---------- 起動 ---------- */
 (async function init(){
