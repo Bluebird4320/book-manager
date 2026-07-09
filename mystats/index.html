@@ -217,6 +217,7 @@
   .field textarea{resize:vertical;}
   .field input:focus,.field select:focus,.field textarea:focus{outline:none; border-color:var(--ink-soft);}
   .field-error{border-color:var(--danger)!important;}
+  .hint{font-size:12px; color:var(--ink-soft); margin-top:4px; line-height:1.7;}
   .error-msg{color:var(--danger); font-size:12px; margin-top:3px;}
   .field .withunit{display:flex; align-items:center; gap:8px;}
   .field .withunit input{flex:1;}
@@ -246,9 +247,10 @@
   /* genre edit */
   .frow{
     background:var(--card); border:1px solid var(--line); border-radius:10px;
-    padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; gap:10px; font-size:13px;
+    padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; gap:6px 10px; font-size:13px;
+    flex-wrap:wrap;
   }
-  .frow .fn{flex:1; font-weight:700; min-width:0;}
+  .frow .fn{flex:1; font-weight:700; min-width:72px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .frow .rowbtn{border:none;background:none;color:var(--ink-soft);font-size:14px;cursor:pointer;padding:4px 5px;}
   .frow .rowbtn:disabled{opacity:.25; cursor:default;}
   .badge{font-size:10.5px; padding:2px 8px; border-radius:999px; background:var(--paper); border:1px solid var(--line); color:var(--ink-soft); white-space:nowrap;}
@@ -497,6 +499,16 @@ const FIELD_TYPES = {
   rating: { label: '評価★' },
 };
 
+/* 項目編集で型を選んだときの説明(何を選べばよいか一目で分かるように) */
+const TYPE_HELP = {
+  number: '数字で記録するもの(例: 学習時間、ページ数、金額)。合計・平均が自動計算され、グラフになります。',
+  text:   '文字で記録するもの(例: 教材名、本のタイトル、店名)。集計はされません。',
+  date:   '日付を記録するもの(例: 提出日、次回予定)。',
+  select: '決まった選択肢から1つ選ぶもの(例: 天気、カテゴリ)。内訳グラフになります。',
+  check:  '「はい/いいえ」で記録するもの(例: 読了した、服薬した)。実施回数を数えます。',
+  rating: '★1〜5の5段階で評価するもの(例: 満足度、理解度)。平均と内訳グラフになります。',
+};
+
 /* モックのカラーパレット(作成順に自動割当) */
 const COLORS = ['#8A5BA5','#B3402E','#4B7F52','#2F8F5B','#C07A35','#3A7CA5'];
 const EMOJIS = ['📚','🏃','💰','🩺','✏️','📄','⭐','🎯','🍽️','💪','🎸','🐶','☕','🧘','🚴','📷'];
@@ -648,7 +660,10 @@ async function genreCardEl(g){
   const records = await db.getRecordsByGenre(g.id);
   const monthStart = todayStr().slice(0, 7) + '-01';
   const monthRecords = records.filter(r => r.date >= monthStart);
-  const f = (g.fields || []).filter(x => x.type === 'number').sort((a, b) => a.order - b.order)[0];
+  // ホームに表示する項目: ジャンル設定で明示選択(未設定なら一番上の数値項目、'__count__'なら記録数)
+  const numberFields = (g.fields || []).filter(x => x.type === 'number').sort((a, b) => a.order - b.order);
+  const f = g.repFieldId === '__count__' ? null
+    : (numberFields.find(x => x.id === g.repFieldId) || numberFields[0] || null);
   const total = f
     ? monthRecords.reduce((s, r) => s + (Number(r.values?.[f.id]) || 0), 0)
     : monthRecords.length;
@@ -664,7 +679,8 @@ async function genreCardEl(g){
         <div class="sub">今月の${esc(f ? f.name : '記録数')}</div>
       </div>
       ${sparklineSVG(records, f, g.color)}
-    </div>`;
+    </div>
+    ${records.length === 0 ? '<div class="sub" style="margin-top:6px">「＋ 記録」から1件つけると集計とグラフが始まります</div>' : ''}`;
   el.onclick = () => { location.hash = `#/genre/${g.id}`; };
   return el;
 }
@@ -1349,6 +1365,10 @@ async function renderGenreEdit(id){
   const recordCount = await db.countRecordsByGenre(id);
   const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
   const emojis = EMOJIS.includes(g.icon) ? EMOJIS : [g.icon, ...EMOJIS];
+  // ホームカードに表示中の項目(明示選択 or 一番上の数値項目)
+  const numberFields = fields.filter(f => f.type === 'number');
+  const homeFieldId = g.repFieldId === '__count__' ? null
+    : ((numberFields.find(f => f.id === g.repFieldId) || numberFields[0] || {}).id || null);
 
   $('#view').innerHTML = `
     <div class="pagehead">
@@ -1360,14 +1380,23 @@ async function renderGenreEdit(id){
       <div class="emoji-row" id="ge-emoji">${emojis.map(e => `<button data-emoji="${e}" class="${e === g.icon ? 'on' : ''}">${e}</button>`).join('')}</div></div>
     <div class="field"><label>カラー</label>
       <div class="colorrow" id="ge-color">${COLORS.map(c => `<button data-color="${c}" class="${c === g.color ? 'on' : ''}" style="background:${c}"></button>`).join('')}</div></div>
+    <div class="field"><label>ホームに表示する項目</label>
+      <select id="ge-rep">
+        <option value="">自動(一番上の数値項目)</option>
+        ${numberFields.map(f => `<option value="${f.id}" ${g.repFieldId === f.id ? 'selected' : ''}>${esc(f.name)}${f.unit ? '(' + esc(f.unit) + ')' : ''} の今月合計</option>`).join('')}
+        <option value="__count__" ${g.repFieldId === '__count__' ? 'selected' : ''}>記録数(件)</option>
+      </select>
+      <div class="hint">ホーム画面のジャンルカードに大きく表示される集計です。単位は項目に設定したものが使われます。</div>
+    </div>
 
     <div class="sethead">項目の定義 — 基本項目+自由追加</div>
+    <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。↑↓はフォームでの表示順の変更です。</div>
     <div id="ge-fields">
       ${fields.map((f, i) => `
         <div class="frow" data-fid="${f.id}">
           <span class="fn">${esc(f.name)}</span>
           <span class="badge">${FIELD_TYPES[f.type].label}${f.unit ? ' / ' + esc(f.unit) : ''}</span>
-          ${f.preset ? '<span class="badge preset">基本</span>' : ''}${f.required ? '<span class="badge">必須</span>' : ''}
+          ${f.id === homeFieldId ? '<span class="badge">ホーム</span>' : ''}${f.preset ? '<span class="badge preset">基本</span>' : ''}${f.required ? '<span class="badge">必須</span>' : ''}
           <button class="rowbtn" data-up ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
           <button class="rowbtn" data-down ${i === fields.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
           <button class="rowbtn" data-fedit aria-label="編集">✎</button>
@@ -1408,6 +1437,15 @@ async function renderGenreEdit(id){
     $$('#ge-color button').forEach(x => x.classList.toggle('on', x === b));
     toast('カラーを変更しました');
   });
+  $('#ge-rep').onchange = async e => {
+    const fresh = await db.get('genres', id);
+    if (e.target.value) fresh.repFieldId = e.target.value;
+    else delete fresh.repFieldId;
+    fresh.updatedAt = new Date().toISOString();
+    await db.put('genres', fresh);
+    toast('ホームに表示する項目を変更しました');
+    renderGenreEdit(id);
+  };
 
   // 項目の追加・編集・削除・並べ替え(即時保存)
   $('#ge-add-field').onclick = () => openFieldEditModal(g, null);
@@ -1456,6 +1494,7 @@ async function deleteFieldFlow(genre, field){
     (n > 0 ? `\n※ ${n} 件の記録にこの項目の値があります(値は残置され非表示になります)` : '');
   if (!confirm(msg)) return;
   genre.fields = genre.fields.filter(f => f.id !== field.id);
+  if (genre.repFieldId === field.id) delete genre.repFieldId; // ホーム表示項目だった場合は自動に戻す
   genre.fields.slice().sort((a, b) => a.order - b.order).forEach((f, i) => f.order = i);
   genre.updatedAt = new Date().toISOString();
   await db.put('genres', genre); // records側の値は残置(表示時に定義側でフィルタ)
@@ -1469,14 +1508,18 @@ function openFieldEditModal(genre, field){
   const f = field || { name: '', type: 'number', unit: '', options: [], required: false };
   const m = openModal(`
     <h3>${isEdit ? '項目を編集' : '項目を追加'} — ${esc(genre.icon)} ${esc(genre.name)}</h3>
+    <div class="banner" style="margin:0 0 14px"><span class="b-main">「項目」は記録フォームの入力欄です(例: 学習時間・教材名)。<b>毎日の数値や内容は、保存後に「＋ 記録」ボタンから入力します。</b></span></div>
     <div class="field"><label>項目名<span class="req">*</span></label>
-      <input type="text" id="fe-name" value="${esc(f.name)}" maxlength="20" placeholder="例: 消費カロリー"></div>
-    <div class="field"><label>型</label>
+      <input type="text" id="fe-name" value="${esc(f.name)}" maxlength="20" placeholder="例: 学習時間">
+      <div class="hint">「なにを記録するか」の名前です。</div></div>
+    <div class="field"><label>型 — 記録のかたち</label>
       <select id="fe-type">
         ${Object.entries(FIELD_TYPES).map(([k, t]) => `<option value="${k}" ${f.type === k ? 'selected' : ''}>${t.label}</option>`).join('')}
-      </select></div>
+      </select>
+      <div class="hint" id="fe-type-help">${TYPE_HELP[f.type] || ''}</div></div>
     <div class="field" id="fe-unit-group" style="display:${f.type === 'number' ? '' : 'none'}"><label>単位(任意)</label>
-      <input type="text" id="fe-unit" value="${esc(f.unit || '')}" maxlength="10" placeholder="km / 円 / 人 など"></div>
+      <input type="text" id="fe-unit" value="${esc(f.unit || '')}" maxlength="10" placeholder="分 / km / 円 / ページ など">
+      <div class="hint">数値の後ろにつく“ラベル”です。数量そのもの(60など)は「＋ 記録」で入力します。<br>例:「60分」と記録したい → 単位は「分」、60は記録時に入力。</div></div>
     <div class="field" id="fe-options-group" style="display:${f.type === 'select' ? '' : 'none'}"><label>選択肢(カンマ区切り)<span class="req">*</span></label>
       <input type="text" id="fe-options" value="${esc((f.options || []).join(', '))}" placeholder="晴れ, くもり, 雨"></div>
     <div class="field"><label>必須にする</label>
@@ -1491,6 +1534,7 @@ function openFieldEditModal(genre, field){
     const t = $('#fe-type', m.el).value;
     $('#fe-unit-group', m.el).style.display = t === 'number' ? '' : 'none';
     $('#fe-options-group', m.el).style.display = t === 'select' ? '' : 'none';
+    $('#fe-type-help', m.el).textContent = TYPE_HELP[t] || ''; // 型に応じた説明を表示
   };
   $('#fe-cancel', m.el).onclick = () => m.close();
   $('#fe-save', m.el).onclick = async () => {
@@ -1501,6 +1545,15 @@ function openFieldEditModal(genre, field){
     const required = $('#fe-required', m.el).classList.contains('on');
     if (!name) { $('#fe-name', m.el).classList.add('field-error'); return; }
     if (type === 'select' && options.length === 0) { $('#fe-options', m.el).classList.add('field-error'); return; }
+
+    // 単位に数字だけが入っている場合は誤入力の可能性が高いため確認する
+    if (type === 'number' && /^[0-9０-９.,]+$/.test(unit)) {
+      if (!confirm(`単位に数字「${unit}」が入力されています。\n単位は「分」「km」のような“ラベル”です。\n数量(${unit}など)は保存後に「＋ 記録」から入力してください。\n\nこのまま「${unit}」を単位として保存しますか?`)) {
+        $('#fe-unit', m.el).classList.add('field-error');
+        $('#fe-unit', m.el).focus();
+        return;
+      }
+    }
 
     const fresh = await db.get('genres', genre.id);
 
