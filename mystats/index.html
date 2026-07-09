@@ -1852,7 +1852,9 @@ async function buildShareCard(genre, subtitle, lines){
     x.beginPath(); x.moveTo(0, i); x.lineTo(W, i); x.stroke();
   }
   x.fillStyle = '#22302E'; x.font = '800 68px ' + JP; x.fillText('MyStats', 80, 140);
-  x.fillStyle = '#5C6B67'; x.font = '600 30px ' + JP; x.fillText('FIELD NOTES', 360, 138);
+  // ロゴの実測幅から配置(フォント差による「FIELD NOTES」の重なりを防ぐ)
+  const logoW = x.measureText('MyStats').width;
+  x.fillStyle = '#5C6B67'; x.font = '600 30px ' + JP; x.fillText('FIELD NOTES', 80 + logoW + 26, 138);
   x.fillStyle = 'rgba(34,48,46,.35)';
   for (let i = 80; i < W - 80; i += 20) x.fillRect(i, 168, 2, 14);
   x.save();
