@@ -267,6 +267,36 @@
   .colorrow button{width:30px; height:30px; border-radius:50%; border:3px solid transparent; cursor:pointer;}
   .colorrow button.on{border-color:var(--ink);}
 
+  /* ── チュートリアル(初回起動・横スライド) ── */
+  .tut-overlay{position:fixed; inset:0; background:var(--paper); z-index:80; display:flex; flex-direction:column;}
+  .tut-slides{flex:1; display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+  .tut-slides::-webkit-scrollbar{display:none;}
+  .tslide{min-width:100%; scroll-snap-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px 36px;}
+  .tslide .art{font-size:96px; line-height:1; margin-bottom:30px;}
+  .tslide h2{font-size:23px; font-weight:800; margin-bottom:14px;}
+  .tslide p{font-size:15px; color:var(--ink-soft); max-width:300px; line-height:1.9;}
+  .tut-dots{display:flex; gap:8px; justify-content:center; padding:12px;}
+  .tut-dots span{width:8px; height:8px; border-radius:999px; background:var(--line); transition:all .2s;}
+  .tut-dots span.on{background:var(--ink); width:24px;}
+  .tut-foot{padding:0 24px calc(24px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:6px;}
+  #tut-skip{background:none; border:none; color:var(--ink-soft); font-size:13px; text-decoration:underline; cursor:pointer; padding:10px;}
+
+  /* ── ロック画面(パスコード & Face ID) ── */
+  .lock-overlay{position:fixed; inset:0; background:var(--paper); z-index:90; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px;}
+  .lock-overlay .lockicon{font-size:44px;}
+  .lock-overlay h2{font-size:20px; font-weight:800; letter-spacing:.06em;}
+  .pin-dots{display:flex; gap:16px; padding:6px 0;}
+  .pin-dots span{width:14px; height:14px; border-radius:50%; border:1.5px solid var(--ink-soft);}
+  .pin-dots span.on{background:var(--ink); border-color:var(--ink);}
+  .lock-msg{font-size:12px; color:var(--danger); min-height:18px;}
+  .pin-pad{display:grid; grid-template-columns:repeat(3,72px); gap:14px;}
+  .pin-pad button{height:72px; border-radius:50%; border:1px solid var(--line); background:var(--card); font-size:24px; font-weight:700; color:var(--ink); cursor:pointer; box-shadow:var(--shadow);}
+  .pin-pad button:active{background:var(--line);}
+  .pin-pad .ghostkey{border:none; background:none; box-shadow:none; font-size:17px;}
+  .lock-bio{background:none; border:none; color:var(--ink-soft); font-size:14px; text-decoration:underline; cursor:pointer; padding:6px;}
+  @keyframes shake{0%,100%{transform:none}25%{transform:translateX(-9px)}75%{transform:translateX(9px)}}
+  .shake{animation:shake .25s;}
+
   .toast{
     position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
     background:var(--ink); color:var(--paper); padding:9px 18px; border-radius:999px; font-size:13px;
@@ -639,7 +669,7 @@ async function genreCardEl(g){
   return el;
 }
 
-/* 連続記録日数(今日または昨日を起点に遡る) *//* 連続記録日数(今日または昨日を起点に遡る) */
+/* 連続記録日数(今日または昨日を起点に遡る) */
 function calcStreak(records){
   if (!records.length) return 0;
   const days = new Set(records.map(r => r.date));
@@ -669,7 +699,6 @@ function sparklineSVG(records, repField, color){
 }
 
 /* =====================================================
- * ジャンル新規作成モーダル(S-6)/* =====================================================
  * ジャンル新規作成モーダル(S-6)
  * ===================================================== */
 function openGenreCreateModal(){
@@ -724,7 +753,6 @@ function openGenreCreateModal(){
 }
 
 /* =====================================================
- * ジャンル画面(#/genre/:id) 記録一覧 / 統計/* =====================================================
  * ジャンル画面(#/genre/:id) 記録一覧 / 統計
  * ===================================================== */
 let genreTab = 'stats'; // 'stats' | 'records'(S-2: タブは[統計][記録一覧]の順)
@@ -775,6 +803,7 @@ function renderRecordList(g, records){
     if (!item) return;
     const rec = records.find(r => r.id === item.dataset.id);
     if (!rec) return;
+    if (e.target.closest('[data-share]')) { shareRecord(g, rec); return; }
     if (e.target.closest('[data-del]')) {
       if (!confirm('この記録を削除しますか?')) return; // 記録1件: confirm 1回
       await db.delete('records', rec.id);
@@ -813,11 +842,12 @@ function recordItemHTML(r, fields){
         <div class="main">${esc(main)}</div>
         ${meta.length ? `<div class="meta">${meta.map(esc).join(' ・ ')}</div>` : ''}
       </div>
+      <button class="del" data-share aria-label="シェア">📤</button>
       <button class="del" data-del aria-label="削除">🗑</button>
     </div>`;
 }
 
-/* ---- 統計タブ ---- *//* ---- 統計タブ ---- */
+/* ---- 統計タブ ---- */
 const PERIODS = [
   { key: 'thisWeek',  label: '今週' },
   { key: 'thisMonth', label: '今月' },
@@ -1061,9 +1091,14 @@ function renderStats(g, records){
     }
   }
 
+  html += `<button class="addgenre" id="st-share">📤 この統計をシェア(X / Instagram / TikTok)</button>`;
+
   body.innerHTML = html;
   wirePeriodChips(g, records);
   wireCustomRange(g, records);
+
+  const periodLabel = (PERIODS.find(p => p.key === statsPeriod) || {}).label || '';
+  $('#st-share').onclick = () => shareStats(g, filtered, periodLabel);
 
   $('#st-field').onchange = e => { statsChartFieldId = e.target.value; renderStats(g, records); };
   $('#st-day').onclick = () => { statsGranularity = 'day'; renderStats(g, records); };
@@ -1153,7 +1188,6 @@ function wireCustomRange(g, records){
 }
 
 /* =====================================================
- * 記録入力モーダル(S-3)/* =====================================================
  * 記録入力モーダル(S-3)
  * ===================================================== */
 function fieldInputHTML(f, value){
@@ -1307,7 +1341,6 @@ function openRecordModal(genre, record = null, opts = {}){
 }
 
 /* =====================================================
- * ジャンル設定画面(S-4 / #/genre/:id/edit)/* =====================================================
  * ジャンル設定画面(S-4 / #/genre/:id/edit)
  * ===================================================== */
 async function renderGenreEdit(id){
@@ -1532,7 +1565,6 @@ function openGenreDeleteModal(genre, recordCount){
 }
 
 /* =====================================================
- * データ管理(エクスポート/インポート/全削除)/* =====================================================
  * データ管理(エクスポート/インポート/全削除)
  * ===================================================== */
 function downloadFile(filename, content, mime){
@@ -1701,12 +1733,11 @@ function openDeleteAllModal(){
 }
 
 /* =====================================================
- * 設定画面(#/settings)/* =====================================================
  * 設定画面(#/settings)
  * ===================================================== */
 async function renderSettings(){
-  const [genres, records, lastExportAt] = await Promise.all([
-    db.getAll('genres'), db.getAll('records'), db.getMeta('lastExportAt'),
+  const [genres, records, lastExportAt, lockMeta] = await Promise.all([
+    db.getAll('genres'), db.getAll('records'), db.getMeta('lastExportAt'), db.getMeta('lock'),
   ]);
   genres.sort((a, b) => a.order - b.order);
 
@@ -1725,6 +1756,8 @@ async function renderSettings(){
     <div class="setrow" id="set-theme"><span>◐ 外観</span><span class="valtxt">${THEME_LABEL[appSettings.theme]}</span><span class="arr">›</span></div>
     <div class="setrow" id="set-week"><span>📅 週の始まり</span><span class="valtxt">${WEEK_LABEL[appSettings.weekStart]}</span><span class="arr">›</span></div>
     <div class="setrow" id="set-chart"><span>📊 推移グラフ</span><span class="valtxt">${CHART_LABEL[appSettings.chartType]}</span><span class="arr">›</span></div>
+    <div class="setrow" id="set-lock"><span>🔒 パスコード & Face ID</span><span class="valtxt">${lockMeta && lockMeta.enabled ? 'オン' : 'オフ'}</span><span class="arr">›</span></div>
+    <div class="setrow" id="set-tutorial"><span>❓ 使い方(チュートリアル)</span><span class="arr">›</span></div>
     <div class="sethead">危険な操作</div>
     <div class="setrow warn" id="st-delete-all">すべてのデータを削除<span class="arr">›</span></div>
     <div class="banner" style="margin-top:20px"><span class="b-main">データはこの端末の${memoryMode ? 'メモリ(一時)' : 'IndexedDB'}に保存され、オフラインでも保持されます。<br>現在: ジャンル ${genres.length} 件・記録 ${fmtNum(records.length)} 件${lastExportAt ? ` / 最終バックアップ ${new Date(lastExportAt).toLocaleString('ja-JP')}` : ' / バックアップ未実施'}</span></div>`;
@@ -1758,6 +1791,8 @@ async function renderSettings(){
   $('#set-chart').onclick = () => openChoiceSheet('推移グラフ', CHART_LABEL, appSettings.chartType, async k => {
     appSettings.chartType = k; await saveSettings(); renderSettings();
   });
+  $('#set-lock').onclick = () => openLockSettings();
+  $('#set-tutorial').onclick = () => showTutorial();
 }
 
 /* 選択シート(iOS風: 現在値に✓) */
@@ -1770,7 +1805,6 @@ function openChoiceSheet(title, labels, current, onPick){
 }
 
 /* =====================================================
- * バックアップ促しバナー/* =====================================================
  * バックアップ促しバナー
  * (最終エクスポートから30日経過 かつ 記録50件以上)
  * ===================================================== */
@@ -1790,7 +1824,324 @@ function wireBackupBanner(){
 }
 
 /* =====================================================
- * 開発用ユーティリティ(コンソールから使用)/* =====================================================
+ * SNSシェア(APIキー不要・トークン保存なしの安全な方式)
+ *  - モバイル: シェア画像を生成して端末の共有シートへ(X/Instagram/TikTok/LINE等)
+ *  - PC等: 画像をダウンロード + Xの投稿画面を開くフォールバック
+ * ===================================================== */
+function roundRectPath(x, x0, y0, w, h, r){
+  x.beginPath();
+  x.moveTo(x0 + r, y0);
+  x.arcTo(x0 + w, y0, x0 + w, y0 + h, r);
+  x.arcTo(x0 + w, y0 + h, x0, y0 + h, r);
+  x.arcTo(x0, y0 + h, x0, y0, r);
+  x.arcTo(x0, y0, x0 + w, y0, r);
+  x.closePath();
+}
+
+/* モック調(方眼紙+FIELD NOTES)のシェア画像を生成 */
+async function buildShareCard(genre, subtitle, lines){
+  const W = 1080, H = 1080;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const JP = '"Hiragino Sans","Noto Sans JP",sans-serif';
+  x.fillStyle = '#F5F7F3'; x.fillRect(0, 0, W, H);
+  x.strokeStyle = '#E4EAE2'; x.lineWidth = 2;
+  for (let i = 0; i <= W; i += 72) {
+    x.beginPath(); x.moveTo(i, 0); x.lineTo(i, H); x.stroke();
+    x.beginPath(); x.moveTo(0, i); x.lineTo(W, i); x.stroke();
+  }
+  x.fillStyle = '#22302E'; x.font = '800 68px ' + JP; x.fillText('MyStats', 80, 140);
+  x.fillStyle = '#5C6B67'; x.font = '600 30px ' + JP; x.fillText('FIELD NOTES', 360, 138);
+  x.fillStyle = 'rgba(34,48,46,.35)';
+  for (let i = 80; i < W - 80; i += 20) x.fillRect(i, 168, 2, 14);
+  x.save();
+  x.shadowColor = 'rgba(34,48,46,.12)'; x.shadowBlur = 30; x.shadowOffsetY = 8;
+  x.fillStyle = '#FFFFFF'; roundRectPath(x, 80, 240, W - 160, 640, 28); x.fill();
+  x.restore();
+  x.strokeStyle = '#DCE3DB'; x.lineWidth = 2; roundRectPath(x, 80, 240, W - 160, 640, 28); x.stroke();
+  x.fillStyle = genre.color; x.fillRect(80, 246, 14, 628);
+  x.font = '84px ' + JP; x.fillText(genre.icon, 150, 386);
+  x.fillStyle = '#22302E'; x.font = '800 62px ' + JP; x.fillText(genre.name, 268, 378, 620);
+  x.fillStyle = '#5C6B67'; x.font = '600 40px ' + JP; x.fillText(subtitle, 150, 470, W - 320);
+  x.fillStyle = '#22302E'; x.font = '700 48px ' + JP;
+  lines.slice(0, 5).forEach((l, i) => x.fillText(l, 150, 566 + i * 66, W - 320));
+  x.fillStyle = '#5C6B67'; x.font = '600 34px ' + JP; x.fillText('#MyStats', 80, H - 56);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+async function shareContent(text, blob){
+  const file = blob ? new File([blob], 'mystats.png', { type: 'image/png' }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], text }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  // フォールバック: 画像を保存し、Xの投稿画面を開く(Instagram/TikTokは保存画像を添付)
+  if (blob) downloadFile('mystats-share.png', blob, 'image/png');
+  window.open('https://x.com/intent/post?text=' + encodeURIComponent(text), '_blank', 'noopener');
+  toast('画像を保存しました。X / Instagram / TikTok に添付できます');
+}
+
+async function shareRecord(genre, rec){
+  const fields = (genre.fields || []).slice().sort((a, b) => a.order - b.order);
+  const lines = [];
+  for (const f of fields) {
+    const v = rec.values?.[f.id];
+    if (v === undefined || v === null || v === '') continue;
+    if (f.type === 'rating') lines.push('★'.repeat(Math.max(0, Math.min(5, Number(v) || 0))));
+    else if (f.type === 'check') { if (v === true) lines.push('✓' + f.name); }
+    else if (f.type === 'number') lines.push(`${f.name} ${fmtNum(Number(v))}${f.unit || ''}`);
+    else lines.push(`${f.name} ${v}`);
+    if (lines.length >= 5) break;
+  }
+  const text = `${genre.icon} ${genre.name} ${dateLabel(rec.date)}\n${lines.join(' / ')}\n#MyStats`;
+  const blob = await buildShareCard(genre, dateLabel(rec.date), lines);
+  await shareContent(text, blob);
+}
+
+async function shareStats(genre, records, periodLabel){
+  const fields = (genre.fields || []).slice().sort((a, b) => a.order - b.order);
+  const lines = [];
+  for (const f of fields.filter(x => x.type === 'number').slice(0, 3)) {
+    const a = aggregateNumber(records, f.id);
+    lines.push(`${f.name} 合計 ${fmtNum(a.sum)}${f.unit ? ' ' + f.unit : ''}`);
+  }
+  lines.push(`記録数 ${fmtNum(records.length)} 件`);
+  const text = `${genre.icon} ${genre.name}(${periodLabel})\n${lines.join(' / ')}\n#MyStats`;
+  const blob = await buildShareCard(genre, `${periodLabel}のきろく`, lines);
+  await shareContent(text, blob);
+}
+
+/* =====================================================
+ * パスコード & Face ID ロック
+ *  - パスコードは平文保存せずPBKDF2(15万回)でハッシュ化してmetaに保存
+ *  - 生体認証はWebAuthn(端末内認証器)。鍵は端末のセキュア領域に保存され外部送信なし
+ *  - 注意: 端末内の閲覧防止ロックであり、データ自体の暗号化ではない
+ * ===================================================== */
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function hashPin(pin, saltB64){
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: unb64(saltB64), iterations: 150000, hash: 'SHA-256' }, key, 256);
+  return b64(bits);
+}
+
+async function biometricAvailable(){
+  try {
+    return !!(window.isSecureContext && window.PublicKeyCredential &&
+      await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+  } catch (e) { return false; }
+}
+
+async function registerBio(lock){
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'MyStats' },
+    user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'mystats', displayName: 'MyStats' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+    timeout: 60000,
+  }});
+  lock.webauthn = b64(cred.rawId);
+  await db.setMeta('lock', lock);
+}
+
+async function requireUnlockIfNeeded(){
+  const lock = await db.getMeta('lock');
+  if (!lock || !lock.enabled) return;
+  await showLockScreen(lock);
+}
+
+function showLockScreen(lock){
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'lock-overlay';
+    ov.innerHTML = `
+      <div class="lockicon">🔒</div><h2>MyStats</h2>
+      <div class="pin-dots">${'<span></span>'.repeat(4)}</div>
+      <div class="lock-msg" id="lock-msg"></div>
+      <div class="pin-pad" id="pin-pad">
+        ${[1,2,3,4,5,6,7,8,9].map(n => `<button data-n="${n}">${n}</button>`).join('')}
+        <button class="ghostkey" data-bio ${lock.webauthn ? '' : 'style="visibility:hidden"'}>👤</button>
+        <button data-n="0">0</button>
+        <button class="ghostkey" data-del>⌫</button>
+      </div>
+      ${lock.webauthn ? '<button class="lock-bio" data-bio>Face ID / 指紋で解除</button>' : ''}`;
+    document.body.appendChild(ov);
+    let pin = '', fails = 0, lockedUntil = 0;
+    const dots = ov.querySelectorAll('.pin-dots span');
+    const msg = ov.querySelector('#lock-msg');
+    const paint = () => dots.forEach((d, i) => d.classList.toggle('on', i < pin.length));
+    const unlock = () => { ov.remove(); resolve(); };
+    async function tryPin(){
+      if (await hashPin(pin, lock.salt) === lock.hash) { unlock(); return; }
+      fails++; pin = ''; paint();
+      const pd = ov.querySelector('.pin-dots');
+      pd.classList.add('shake');
+      setTimeout(() => pd.classList.remove('shake'), 300);
+      if (fails >= 5) { lockedUntil = Date.now() + 30000; msg.textContent = '試行回数が多すぎます。30秒待ってからお試しください'; }
+      else msg.textContent = 'パスコードが違います';
+    }
+    async function tryBio(){
+      try {
+        await navigator.credentials.get({ publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          allowCredentials: [{ type: 'public-key', id: unb64(lock.webauthn) }],
+          userVerification: 'required', timeout: 60000,
+        }});
+        unlock();
+      } catch (e) { msg.textContent = '生体認証に失敗しました。パスコードを入力してください'; }
+    }
+    ov.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (Date.now() < lockedUntil) return;
+      if (fails >= 5) { fails = 0; msg.textContent = ''; }
+      if (b.dataset.n !== undefined) {
+        if (pin.length < 4) { pin += b.dataset.n; paint(); if (pin.length === 4) tryPin(); }
+      } else if (b.hasAttribute('data-del')) { pin = pin.slice(0, -1); paint(); }
+      else if (b.hasAttribute('data-bio') && lock.webauthn) tryBio();
+    });
+    if (lock.webauthn) tryBio(); // 起動時にまず生体認証を試す
+  });
+}
+
+/* 設定: ロックのセットアップ・管理 */
+function openPinSetup(existing){
+  const m = openModal(`
+    <h3>🔒 パスコードを設定</h3>
+    <p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px">
+      アプリを開くときに4桁のパスコードを求めます。<br>
+      ※ パスコードを忘れると解除できません(全データ削除が必要になります)。必ず控えてください。
+    </p>
+    <div class="field"><label>パスコード(数字4桁)</label><input type="password" id="pin1" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+    <div class="field"><label>もう一度入力</label><input type="password" id="pin2" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+    <div class="error-msg" id="pin-err" style="display:none"></div>
+    <div class="btnrow">
+      <button class="btn ghost" id="pin-cancel">キャンセル</button>
+      <button class="btn primary" id="pin-save">設定する</button>
+    </div>`);
+  $('#pin-cancel', m.el).onclick = () => m.close();
+  $('#pin-save', m.el).onclick = async () => {
+    const p1 = $('#pin1', m.el).value, p2 = $('#pin2', m.el).value;
+    const err = $('#pin-err', m.el);
+    if (!/^\d{4}$/.test(p1)) { err.textContent = '数字4桁で入力してください'; err.style.display = ''; return; }
+    if (p1 !== p2) { err.textContent = '入力が一致しません'; err.style.display = ''; return; }
+    const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    const lock = { enabled: true, salt, hash: await hashPin(p1, salt), webauthn: existing ? existing.webauthn : null };
+    await db.setMeta('lock', lock);
+    m.close();
+    toast(existing ? 'パスコードを変更しました' : 'パスコードを設定しました');
+    if (!existing && await biometricAvailable() && confirm('Face ID / 指紋でも解除できるようにしますか?')) {
+      try { await registerBio(lock); toast('生体認証を登録しました'); }
+      catch (e) { toast('生体認証の登録をキャンセルしました'); }
+    }
+    renderSettings();
+  };
+}
+
+async function openLockSettings(){
+  if (!(crypto && crypto.subtle)) { alert('この環境ではロック機能を利用できません(セキュアコンテキストが必要です)'); return; }
+  const lock = await db.getMeta('lock');
+  if (!lock || !lock.enabled) { openPinSetup(null); return; }
+  const bioAvail = await biometricAvailable();
+  const m = openModal(`
+    <h3>🔒 パスコード & Face ID</h3>
+    <div class="setrow" id="lk-change"><span>パスコードを変更</span><span class="arr">›</span></div>
+    ${(bioAvail || lock.webauthn) ? `<div class="setrow" id="lk-bio"><span>Face ID / 指紋で解除</span><span class="valtxt">${lock.webauthn ? 'オン' : 'オフ'}</span><span class="arr">›</span></div>` : ''}
+    <div class="setrow warn" id="lk-off"><span>ロックをオフにする</span><span class="arr">›</span></div>`);
+  $('#lk-change', m.el).onclick = () => { m.close(); verifyPinThen(lock, () => openPinSetup(lock)); };
+  const bio = $('#lk-bio', m.el);
+  if (bio) bio.onclick = async () => {
+    m.close();
+    if (lock.webauthn) {
+      lock.webauthn = null;
+      await db.setMeta('lock', lock);
+      toast('生体認証をオフにしました');
+    } else {
+      try { await registerBio(lock); toast('生体認証を登録しました'); }
+      catch (e) { toast('生体認証を登録できませんでした'); }
+    }
+    renderSettings();
+  };
+  $('#lk-off', m.el).onclick = () => {
+    m.close();
+    verifyPinThen(lock, async () => {
+      await db.setMeta('lock', { ...lock, enabled: false, webauthn: null });
+      toast('ロックをオフにしました');
+      renderSettings();
+    });
+  };
+}
+
+function verifyPinThen(lock, onOk){
+  const m = openModal(`
+    <h3>現在のパスコードを入力</h3>
+    <div class="field"><input type="password" id="vp" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+    <div class="error-msg" id="vp-err" style="display:none">パスコードが違います</div>
+    <div class="btnrow">
+      <button class="btn ghost" id="vp-cancel">キャンセル</button>
+      <button class="btn primary" id="vp-ok">確認</button>
+    </div>`);
+  $('#vp-cancel', m.el).onclick = () => m.close();
+  $('#vp-ok', m.el).onclick = async () => {
+    if (await hashPin($('#vp', m.el).value, lock.salt) === lock.hash) { m.close(); onOk(); }
+    else $('#vp-err', m.el).style.display = '';
+  };
+}
+
+/* =====================================================
+ * 初回チュートリアル(横スライド・スワイプ対応)
+ * ===================================================== */
+const TUT_SLIDES = [
+  { icon: '📊', title: 'ようこそ「MyStats」', body: '読書・運動・支出…すきなことを記録して、あとからふりかえれる「なんでも記録ノート」です。' },
+  { icon: '📚', title: '① ジャンルをつくる', body: '「＋ ジャンルを追加」からテンプレートをえらぶだけ。記録する項目はあとから自由にかえられます。' },
+  { icon: '✏️', title: '② 「＋ 記録」でつける', body: '画面下のボタンから、1日10秒で記録。日付は自動で今日になります。' },
+  { icon: '📈', title: '③ グラフでふりかえる', body: '合計や平均、連続記録(🔥)が自動で集計。つづけるのが楽しくなります。' },
+  { icon: '🔒', title: 'データはこの端末の中だけ', body: '記録は外部に送信されません。設定からバックアップ・パスコードロック・SNSシェアができます。' },
+];
+
+async function maybeShowTutorial(){
+  if (await db.getMeta('tutorialDone')) return;
+  showTutorial();
+}
+
+function showTutorial(){
+  const ov = document.createElement('div');
+  ov.className = 'tut-overlay';
+  ov.innerHTML = `
+    <div class="tut-slides" id="tut-slides">
+      ${TUT_SLIDES.map(s => `<div class="tslide"><div class="art">${s.icon}</div><h2>${s.title}</h2><p>${s.body}</p></div>`).join('')}
+    </div>
+    <div class="tut-dots" id="tut-dots">${TUT_SLIDES.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('')}</div>
+    <div class="tut-foot">
+      <button class="btn primary" id="tut-next">つぎへ</button>
+      <button id="tut-skip">スキップ</button>
+    </div>`;
+  document.body.appendChild(ov);
+  const slides = $('#tut-slides', ov);
+  const dots = $$('#tut-dots span', ov);
+  let idx = 0;
+  function setIdx(i){
+    idx = i;
+    dots.forEach((d, j) => d.classList.toggle('on', j === i));
+    $('#tut-next', ov).textContent = i === TUT_SLIDES.length - 1 ? 'はじめる' : 'つぎへ';
+  }
+  slides.addEventListener('scroll', () => {
+    const i = Math.round(slides.scrollLeft / slides.clientWidth);
+    if (i !== idx && i >= 0 && i < TUT_SLIDES.length) setIdx(i);
+  }, { passive: true });
+  async function finish(){ ov.remove(); await db.setMeta('tutorialDone', true); }
+  $('#tut-next', ov).onclick = () => {
+    if (idx < TUT_SLIDES.length - 1) slides.scrollTo({ left: (idx + 1) * slides.clientWidth, behavior: 'smooth' });
+    else finish();
+  };
+  $('#tut-skip', ov).onclick = finish;
+}
+
+/* =====================================================
  * 開発用ユーティリティ(コンソールから使用)
  *   mystatsDev.generateDummy(10000)  … ダミー記録を生成
  *   mystatsDev.benchmark()           … 一覧・集計の所要時間を計測
@@ -1871,6 +2222,7 @@ window.mystatsDev = {
 (async function init(){
   await db.init();
   await loadSettings();
+  await requireUnlockIfNeeded(); // ロック有効時は解除まで進まない
   // FAB「＋ 記録」: ジャンル未作成なら作成へ、あれば記録シート(ジャンル切替チップ付き)
   $('#fab').onclick = async () => {
     const genres = (await db.getAll('genres')).sort((a, b) => a.order - b.order);
@@ -1881,6 +2233,7 @@ window.mystatsDev = {
   };
   window.addEventListener('hashchange', route);
   await route();
+  maybeShowTutorial(); // 初回起動時のみ表示
 })();
 </script>
 </body>
