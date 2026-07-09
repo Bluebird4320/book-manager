@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>MyStats - 汎用統計トラッカー</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --primary:#6366f1;
+  --primary-dark:#4f46e5;
+  --bg:#f1f5f9;
+  --surface:#ffffff;
+  --text:#0f172a;
+  --text-sub:#64748b;
+  --border:#e2e8f0;
+  --danger:#ef4444;
+  --radius:14px;
+  --shadow:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.04);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Segoe UI",sans-serif;
+  background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;
+  min-height:100vh;
+}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:16px}
+
+/* ===== ヘッダー ===== */
+.app-header{
+  position:sticky;top:0;z-index:50;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 16px;height:52px;display:flex;align-items:center;gap:10px;
+}
+.app-header .title{font-size:17px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{
+  background:none;border:none;font-size:20px;line-height:1;padding:8px;border-radius:10px;color:var(--text);
+}
+.icon-btn:active{background:var(--bg)}
+.header-brand{font-weight:800;font-size:18px;color:var(--primary);letter-spacing:.02em;flex:1}
+
+/* ===== レイアウト ===== */
+main{max-width:960px;margin:0 auto;padding:16px 16px 96px}
+.section-title{font-size:13px;font-weight:700;color:var(--text-sub);margin:18px 2px 8px;letter-spacing:.04em}
+
+/* ===== カード ===== */
+.card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+.genre-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:640px){.genre-grid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:960px){.genre-grid{grid-template-columns:repeat(3,1fr)}}
+.genre-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;cursor:pointer;border-top:4px solid var(--primary);transition:transform .1s}
+.genre-card:active{transform:scale(.98)}
+.genre-card .gc-head{display:flex;align-items:center;gap:10px}
+.gc-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.gc-name{font-weight:700;font-size:16px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.streak-badge{font-size:12px;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.gc-stat{margin-top:10px}
+.gc-stat .label{font-size:12px;color:var(--text-sub)}
+.gc-stat .value{font-size:24px;font-weight:800}
+.gc-stat .value small{font-size:13px;font-weight:600;color:var(--text-sub);margin-left:2px}
+.gc-spark{margin-top:6px;width:100%;height:36px}
+.gc-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.gc-count{font-size:12px;color:var(--text-sub)}
+
+/* ===== ボタン ===== */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:700;
+  background:var(--primary);color:#fff;
+}
+.btn:active{background:var(--primary-dark)}
+.btn.secondary{background:var(--bg);color:var(--text)}
+.btn.danger{background:#fef2f2;color:var(--danger)}
+.btn.danger-solid{background:var(--danger);color:#fff}
+.btn.small{padding:6px 12px;font-size:13px}
+.btn.block{width:100%}
+.btn:disabled{opacity:.4;pointer-events:none}
+
+/* ===== FAB ===== */
+.fab{
+  position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:40;
+  width:56px;height:56px;border-radius:50%;border:none;
+  background:var(--primary);color:#fff;font-size:26px;
+  box-shadow:0 4px 14px rgba(99,102,241,.4);
+  display:flex;align-items:center;justify-content:center;
+}
+.fab:active{background:var(--primary-dark)}
+
+/* ===== 空状態 ===== */
+.empty-state{text-align:center;padding:56px 20px;color:var(--text-sub)}
+.empty-state .big{font-size:48px;margin-bottom:12px}
+.empty-state h2{font-size:17px;color:var(--text);margin-bottom:6px}
+.empty-state p{font-size:13px;margin-bottom:20px}
+
+/* ===== モーダル ===== */
+.overlay{
+  position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.5);
+  display:flex;align-items:flex-end;justify-content:center;
+}
+@media(min-width:640px){.overlay{align-items:center;padding:24px}}
+.modal{
+  background:var(--surface);width:100%;max-width:520px;
+  border-radius:20px 20px 0 0;max-height:92vh;overflow-y:auto;
+  padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+  animation:slideup .18s ease-out;
+}
+@media(min-width:640px){.modal{border-radius:20px;max-height:85vh}}
+@keyframes slideup{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+.modal h2{font-size:17px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.modal-foot{display:flex;gap:10px;margin-top:18px}
+.modal-foot .btn{flex:1}
+
+/* ===== フォーム ===== */
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:13px;font-weight:700;margin-bottom:5px}
+.form-group label .req{color:var(--danger);font-size:12px;margin-left:4px}
+.form-group .hint{font-size:12px;color:var(--text-sub);margin-top:3px}
+.input,.form-group input[type=text],.form-group input[type=number],.form-group input[type=date],.form-group select,.form-group textarea{
+  width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface);color:var(--text);
+}
+.form-group textarea{resize:vertical;min-height:72px}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--primary)}
+.field-error{border-color:var(--danger)!important}
+.error-msg{color:var(--danger);font-size:12px;margin-top:3px}
+.input-with-unit{display:flex;align-items:center;gap:8px}
+.input-with-unit input{flex:1}
+.input-with-unit .unit{font-size:13px;color:var(--text-sub);white-space:nowrap}
+
+/* 評価(★) */
+.rating-input{display:flex;align-items:center;gap:2px}
+.rating-input .star{background:none;border:none;font-size:28px;color:#d1d5db;padding:2px}
+.rating-input .star.on{color:#f59e0b}
+.rating-input .clear{margin-left:8px;font-size:12px;color:var(--text-sub);background:none;border:none;text-decoration:underline}
+
+/* チェック */
+.check-input{display:flex;align-items:center;gap:8px;font-size:15px}
+.check-input input{width:22px;height:22px;accent-color:var(--primary)}
+
+/* ===== テンプレート選択 ===== */
+.tpl-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:480px){.tpl-grid{grid-template-columns:repeat(3,1fr)}}
+.tpl-card{
+  border:1.5px solid var(--border);border-radius:12px;background:var(--surface);
+  padding:14px 8px;text-align:center;font-size:14px;font-weight:700;
+}
+.tpl-card .tpl-icon{font-size:26px;display:block;margin-bottom:4px}
+.tpl-card .tpl-desc{font-size:11px;font-weight:400;color:var(--text-sub);display:block}
+.tpl-card:active,.tpl-card.selected{border-color:var(--primary);background:#eef2ff}
+
+/* 絵文字・色ピッカー */
+.emoji-row{display:flex;flex-wrap:wrap;gap:6px}
+.emoji-row button{width:40px;height:40px;font-size:20px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface)}
+.emoji-row button.selected{border-color:var(--primary);background:#eef2ff}
+.color-row{display:flex;flex-wrap:wrap;gap:8px}
+.color-row button{width:32px;height:32px;border-radius:50%;border:3px solid transparent}
+.color-row button.selected{border-color:var(--text)}
+
+/* 項目プレビュー・項目エディタ */
+.field-list{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.field-row{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface)}
+.field-row:last-child{border-bottom:none}
+.field-row .f-name{font-weight:700;font-size:14px}
+.field-row .f-meta{font-size:11px;color:var(--text-sub)}
+.field-row .f-main{flex:1;min-width:0}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;vertical-align:middle;margin-left:6px}
+.badge.preset{background:#eef2ff;color:var(--primary)}
+.badge.req{background:#fef2f2;color:var(--danger)}
+.mini-btn{background:var(--bg);border:none;border-radius:8px;padding:6px 8px;font-size:13px;color:var(--text)}
+.mini-btn:disabled{opacity:.3}
+.mini-btn.danger{color:var(--danger)}
+
+/* ===== ジャンル画面 ===== */
+.tabs{display:flex;background:var(--surface);border-radius:12px;padding:4px;box-shadow:var(--shadow);margin-bottom:14px}
+.tabs button{flex:1;border:none;background:none;padding:9px;border-radius:9px;font-size:14px;font-weight:700;color:var(--text-sub)}
+.tabs button.active{background:var(--primary);color:#fff}
+
+/* 記録一覧 */
+.record-item{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px}
+.record-item .r-head{display:flex;align-items:center;gap:8px}
+.record-item .r-date{font-weight:700;font-size:13px}
+.record-item .r-dow{font-size:11px;color:var(--text-sub)}
+.record-item .r-actions{margin-left:auto;display:flex;gap:4px}
+.record-item .r-values{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:13px}
+.record-item .r-values .k{color:var(--text-sub);font-size:11px;margin-right:3px}
+.record-item .r-memo{margin-top:6px;font-size:12px;color:var(--text-sub);white-space:pre-wrap;word-break:break-word}
+
+/* ===== 統計 ===== */
+.chip-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px}
+.chip{border:1.5px solid var(--border);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700;color:var(--text-sub);white-space:nowrap}
+.chip.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+@media(min-width:640px){.stat-grid{grid-template-columns:repeat(3,1fr)}}
+.stat-card{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:12px}
+.stat-card .s-label{font-size:11px;color:var(--text-sub);font-weight:700}
+.stat-card .s-value{font-size:20px;font-weight:800;margin-top:2px}
+.stat-card .s-value small{font-size:12px;color:var(--text-sub);font-weight:600}
+.stat-card .s-sub{font-size:11px;color:var(--text-sub);margin-top:4px;line-height:1.5}
+.chart-box{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.chart-box h3{font-size:13px;font-weight:700;margin-bottom:8px}
+.chart-wrap{position:relative;height:240px}
+.chart-wrap.donut{height:220px}
+
+/* ===== 設定 ===== */
+.settings-item{display:flex;align-items:center;gap:12px;padding:14px 2px;border-bottom:1px solid var(--border)}
+.settings-item:last-child{border-bottom:none}
+.settings-item .s-main{flex:1;min-width:0}
+.settings-item .s-title{font-weight:700;font-size:14px}
+.settings-item .s-desc{font-size:12px;color:var(--text-sub)}
+
+/* ===== バナー・トースト ===== */
+.banner{border-radius:12px;padding:12px 14px;font-size:13px;margin-bottom:12px;display:flex;gap:10px;align-items:center}
+.banner.warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.banner.error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.banner .b-main{flex:1}
+#toast{
+  position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:var(--text);color:#fff;font-size:13px;font-weight:600;padding:10px 18px;border-radius:999px;
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:200;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;
+}
+#toast.show{opacity:1}
+.danger-zone{border:1px solid #fecaca;border-radius:12px;padding:14px;margin-top:20px}
+.danger-zone h3{font-size:13px;color:var(--danger);margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="app-header" id="header"></header>
+  <main id="view"></main>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* =====================================================
+ * MyStats - 汎用統計トラッカー
+ * 単一HTMLファイル / Vanilla JS / IndexedDB(mystats)
+ * ===================================================== */
+
+/* ---------- ユーティリティ ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtNum = n => (typeof n === 'number' && isFinite(n)) ? (Math.round(n * 100) / 100).toLocaleString('ja-JP') : '-';
+const DOW = ['日','月','火','水','木','金','土'];
+function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayStr(){ return fmtDate(new Date()); }
+function dateLabel(s){ // "YYYY-MM-DD" -> "M/D(曜)"
+  const d = new Date(s + 'T00:00:00');
+  if (isNaN(d)) return s;
+  return `${d.getMonth()+1}/${d.getDate()}(${DOW[d.getDay()]})`;
+}
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ---------- IndexedDB ラッパー ---------- */
+const DB_NAME = 'mystats';
+const DB_VERSION = 1;
+let memoryMode = false; // IndexedDB不可時(プライベートモード等)はメモリ動作
+
+const db = {
+  _db: null,
+  _mem: null, // メモリモード用: { genres:Map, records:Map, meta:Map }
+
+  init(){
+    return new Promise((resolve) => {
+      if (!window.indexedDB) { this._enableMemoryMode(); resolve(); return; }
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch(e){ this._enableMemoryMode(); resolve(); return; }
+      req.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains('genres')) {
+          const g = d.createObjectStore('genres', { keyPath: 'id' });
+          g.createIndex('order', 'order');
+        }
+        if (!d.objectStoreNames.contains('records')) {
+          const r = d.createObjectStore('records', { keyPath: 'id' });
+          r.createIndex('genreId', 'genreId');
+          r.createIndex('date', 'date');
+          r.createIndex('genreId_date', ['genreId', 'date']);
+        }
+        if (!d.objectStoreNames.contains('meta')) {
+          d.createObjectStore('meta', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = (e) => { this._db = e.target.result; resolve(); };
+      req.onerror = () => { this._enableMemoryMode(); resolve(); };
+      req.onblocked = () => { this._enableMemoryMode(); resolve(); };
+    });
+  },
+
+  _enableMemoryMode(){
+    memoryMode = true;
+    this._mem = { genres: new Map(), records: new Map(), meta: new Map() };
+  },
+
+  _tx(store, mode){
+    return this._db.transaction(store, mode).objectStore(store);
+  },
+  _wrap(req){
+    return new Promise((res, rej) => {
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  },
+  _keyOf(store){ return store === 'meta' ? 'key' : 'id'; },
+
+  async getAll(store){
+    if (memoryMode) return [...this._mem[store].values()];
+    return this._wrap(this._tx(store, 'readonly').getAll());
+  },
+  async get(store, key){
+    if (memoryMode) return this._mem[store].get(key);
+    return this._wrap(this._tx(store, 'readonly').get(key));
+  },
+  async put(store, obj){
+    if (memoryMode) { this._mem[store].set(obj[this._keyOf(store)], obj); return obj; }
+    await this._wrap(this._tx(store, 'readwrite').put(obj));
+    return obj;
+  },
+  async bulkPut(store, objs){
+    if (memoryMode) { for (const o of objs) this._mem[store].set(o[this._keyOf(store)], o); return; }
+    return new Promise((res, rej) => {
+      const tx = this._db.transaction(store, 'readwrite');
+      const os = tx.objectStore(store);
+      for (const o of objs) os.put(o);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  },
+  async delete(store, key){
+    if (memoryMode) { this._mem[store].delete(key); return; }
+    await this._wrap(this._tx(store, 'readwrite').delete(key));
+  },
+  async bulkDelete(store, keys){
+    if (memoryMode) { for (const k of keys) this._mem[store].delete(k); return; }
+    return new Promise((res, rej) => {
+      const tx = this._db.transaction(store, 'readwrite');
+      const os = tx.objectStore(store);
+      for (const k of keys) os.delete(k);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  },
+  async clear(store){
+    if (memoryMode) { this._mem[store].clear(); return; }
+    await this._wrap(this._tx(store, 'readwrite').clear());
+  },
+  // 複合インデックス [genreId+date] を使った範囲取得(genreId単位)
+  async getRecordsByGenre(genreId){
+    if (memoryMode) return [...this._mem.records.values()].filter(r => r.genreId === genreId);
+    const idx = this._tx('records', 'readonly').index('genreId_date');
+    const range = IDBKeyRange.bound([genreId, ''], [genreId, '￿']);
+    return this._wrap(idx.getAll(range));
+  },
+  async countRecordsByGenre(genreId){
+    if (memoryMode) return (await this.getRecordsByGenre(genreId)).length;
+    const idx = this._tx('records', 'readonly').index('genreId');
+    return this._wrap(idx.count(genreId));
+  },
+  async getMeta(key){
+    const row = await this.get('meta', key);
+    return row ? row.value : undefined;
+  },
+  async setMeta(key, value){
+    await this.put('meta', { key, value });
+  }
+};
+
+/* ---------- 項目型・テンプレート定義 ---------- */
+const FIELD_TYPES = {
+  number: { label: '数値' },
+  text:   { label: 'テキスト' },
+  date:   { label: '日付' },
+  select: { label: '選択式' },
+  check:  { label: 'チェック' },
+  rating: { label: '評価(★1〜5)' },
+};
+
+const COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6','#64748b'];
+const EMOJIS = ['📚','🏃','💰','🌡️','🏢','✏️','⭐','🎯','🍽️','💪','🎸','🐶','☕','🧘','🚴','📷'];
+
+const TEMPLATES = [
+  { key:'reading', name:'読書', icon:'📚', color:'#6366f1', desc:'本・ページ数・評価',
+    fields: [
+      { name:'書名', type:'text', required:true },
+      { name:'ページ数', type:'number', unit:'ページ', required:false },
+      { name:'読書時間', type:'number', unit:'分', required:false },
+      { name:'評価', type:'rating', required:false },
+      { name:'読了', type:'check', required:false },
+    ]},
+  { key:'exercise', name:'運動', icon:'🏃', color:'#10b981', desc:'種目・時間・距離',
+    fields: [
+      { name:'種目', type:'select', options:['ランニング','ウォーキング','筋トレ','ヨガ','その他'], required:true },
+      { name:'時間', type:'number', unit:'分', required:false },
+      { name:'距離', type:'number', unit:'km', required:false },
+      { name:'きつさ', type:'rating', required:false },
+    ]},
+  { key:'expense', name:'支出', icon:'💰', color:'#f59e0b', desc:'金額・カテゴリ',
+    fields: [
+      { name:'金額', type:'number', unit:'円', required:true },
+      { name:'カテゴリ', type:'select', options:['食費','日用品','交通費','娯楽','医療','その他'], required:true },
+      { name:'店名・内容', type:'text', required:false },
+    ]},
+  { key:'health', name:'体調', icon:'🌡️', color:'#ef4444', desc:'体重・睡眠・気分',
+    fields: [
+      { name:'体重', type:'number', unit:'kg', required:false },
+      { name:'睡眠時間', type:'number', unit:'時間', required:false },
+      { name:'気分', type:'rating', required:false },
+      { name:'症状', type:'text', required:false },
+      { name:'服薬', type:'check', required:false },
+    ]},
+  { key:'facility', name:'施設運営', icon:'🏢', color:'#0ea5e9', desc:'来場者数・売上',
+    fields: [
+      { name:'来場者数', type:'number', unit:'人', required:true },
+      { name:'売上', type:'number', unit:'円', required:false },
+      { name:'天気', type:'select', options:['晴れ','曇り','雨','雪'], required:false },
+      { name:'イベント実施', type:'check', required:false },
+    ]},
+  { key:'study', name:'学習', icon:'✏️', color:'#8b5cf6', desc:'科目・時間・理解度',
+    fields: [
+      { name:'科目', type:'select', options:['英語','資格','プログラミング','その他'], required:true },
+      { name:'学習時間', type:'number', unit:'分', required:true },
+      { name:'理解度', type:'rating', required:false },
+      { name:'学習内容', type:'text', required:false },
+    ]},
+  { key:'custom', name:'カスタム', icon:'⭐', color:'#64748b', desc:'項目を自由に定義',
+    fields: [] },
+];
+
+/* テンプレートの fields を実体(コピー+id付与+preset:true)に変換 */
+function instantiateTemplateFields(tpl){
+  return tpl.fields.map((f, i) => ({
+    id: uid(),
+    name: f.name,
+    type: f.type,
+    unit: f.unit || '',
+    options: f.options ? [...f.options] : undefined,
+    required: !!f.required,
+    preset: true,
+    order: i,
+  }));
+}
+
+/* ---------- モーダル ---------- */
+function openModal(html){
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="modal">${html}</div>`;
+  document.body.appendChild(ov);
+  const api = {
+    el: ov,
+    close(){ ov.remove(); },
+  };
+  ov.addEventListener('click', e => { if (e.target === ov) api.close(); });
+  return api;
+}
+
+/* ---------- 値の表示 ---------- */
+function displayValue(field, v){
+  if (v === undefined || v === null || v === '') return '';
+  switch (field.type) {
+    case 'number': return fmtNum(Number(v)) + (field.unit ? ' ' + field.unit : '');
+    case 'check':  return v ? '✓' : '';
+    case 'rating': {
+      const n = Math.max(0, Math.min(5, Number(v) || 0));
+      return '★'.repeat(n) + '☆'.repeat(5 - n);
+    }
+    default: return String(v);
+  }
+}
+
+/* ---------- ルーティング ---------- */
+const routes = [
+  { re: /^#?\/?$/,                     handler: () => renderDashboard() },
+  { re: /^#\/genre\/([^/]+)\/edit$/,   handler: m => renderGenreEdit(m[1]) },
+  { re: /^#\/genre\/([^/]+)$/,         handler: m => renderGenre(m[1]) },
+  { re: /^#\/settings$/,               handler: () => renderSettings() },
+];
+
+async function route(){
+  const hash = location.hash || '#/';
+  for (const r of routes) {
+    const m = hash.match(r.re);
+    if (m) { await r.handler(m); return; }
+  }
+  location.hash = '#/';
+}
+
+function setHeader(html){ $('#header').innerHTML = html; }
+
+/* =====================================================
+ * ダッシュボード(#/)
+ * ===================================================== */
+async function renderDashboard(){
+  setHeader(`
+    <span class="header-brand">📊 MyStats</span>
+    <button class="icon-btn" onclick="location.hash='#/settings'" aria-label="設定">⚙️</button>
+  `);
+  const view = $('#view');
+  const genres = (await db.getAll('genres')).sort((a, b) => a.order - b.order);
+
+  let html = '';
+  if (memoryMode) {
+    html += `<div class="banner error"><span>⚠️</span><span class="b-main">IndexedDBが利用できないため<b>メモリ動作モード</b>で起動しています。ページを閉じるとデータは消えます。プライベートブラウズを解除してご利用ください。</span></div>`;
+  }
+  html += await backupBannerHTML();
+
+  if (genres.length === 0) {
+    html += `
+      <div class="empty-state">
+        <div class="big">📊</div>
+        <h2>MyStatsへようこそ</h2>
+        <p>ジャンル(読書・運動・支出など)を作って<br>日々の記録を始めましょう</p>
+        <button class="btn" id="btn-first-genre">＋ 最初のジャンルを作成</button>
+      </div>`;
+    view.innerHTML = html;
+    $('#btn-first-genre').onclick = () => openGenreCreateModal();
+    return;
+  }
+
+  html += `<div class="genre-grid" id="genre-grid"></div>`;
+  view.innerHTML = html;
+  wireBackupBanner();
+
+  const grid = $('#genre-grid');
+  for (const g of genres) {
+    grid.appendChild(await genreCardEl(g));
+  }
+  const addCard = document.createElement('button');
+  addCard.className = 'btn secondary block';
+  addCard.style.cssText = 'margin-top:2px;border:2px dashed var(--border);background:transparent;color:var(--text-sub);padding:16px';
+  addCard.textContent = '＋ ジャンルを追加';
+  addCard.onclick = () => openGenreCreateModal();
+  grid.appendChild(addCard);
+}
+
+async function genreCardEl(g){
+  const records = await db.getRecordsByGenre(g.id);
+  const el = document.createElement('div');
+  el.className = 'genre-card';
+  el.style.borderTopColor = g.color;
+
+  const monthStart = todayStr().slice(0, 7) + '-01';
+  const monthRecords = records.filter(r => r.date >= monthStart);
+  const repField = (g.fields || []).filter(f => f.type === 'number').sort((a,b) => a.order - b.order)[0];
+  let statLabel, statValue, statUnit;
+  if (repField) {
+    const sum = monthRecords.reduce((acc, r) => acc + (Number(r.values?.[repField.id]) || 0), 0);
+    statLabel = `今月の${repField.name}(合計)`;
+    statValue = fmtNum(sum);
+    statUnit = repField.unit || '';
+  } else {
+    statLabel = '今月の記録';
+    statValue = fmtNum(monthRecords.length);
+    statUnit = '件';
+  }
+  const streak = calcStreak(records);
+
+  el.innerHTML = `
+    <div class="gc-head">
+      <div class="gc-icon" style="background:${esc(g.color)}22">${esc(g.icon)}</div>
+      <div class="gc-name">${esc(g.name)}</div>
+      ${streak > 0 ? `<span class="streak-badge">🔥 ${streak}日連続</span>` : ''}
+    </div>
+    ${records.length === 0
+      ? `<div class="gc-stat"><div class="label">まだ記録がありません</div><div class="value" style="font-size:14px;color:var(--text-sub);font-weight:600">最初の記録をつけましょう</div></div>`
+      : `<div class="gc-stat">
+           <div class="label">${esc(statLabel)}</div>
+           <div class="value">${statValue}<small>${esc(statUnit)}</small></div>
+         </div>
+         ${sparklineSVG(records, repField, g.color)}`
+    }
+    <div class="gc-foot">
+      <span class="gc-count">今月 ${monthRecords.length}件 / 累計 ${records.length}件</span>
+      <button class="btn small" data-rec>＋ 記録する</button>
+    </div>`;
+  el.addEventListener('click', e => {
+    if (e.target.closest('[data-rec]')) { e.stopPropagation(); openRecordModal(g); return; }
+    location.hash = `#/genre/${g.id}`;
+  });
+  return el;
+}
+
+/* 連続記録日数(今日または昨日を起点に遡る) */
+function calcStreak(records){
+  if (!records.length) return 0;
+  const days = new Set(records.map(r => r.date));
+  const d = new Date();
+  if (!days.has(fmtDate(d))) d.setDate(d.getDate() - 1); // 今日未記録なら昨日から判定
+  let streak = 0;
+  while (days.has(fmtDate(d))) { streak++; d.setDate(d.getDate() - 1); }
+  return streak;
+}
+
+/* 直近30日のスパークライン(SVG)。repFieldがあれば日次合計、なければ日次件数 */
+function sparklineSVG(records, repField, color){
+  const days = [];
+  const d = new Date();
+  d.setDate(d.getDate() - 29);
+  const byDate = {};
+  for (const r of records) {
+    const v = repField ? (Number(r.values?.[repField.id]) || 0) : 1;
+    byDate[r.date] = (byDate[r.date] || 0) + v;
+  }
+  for (let i = 0; i < 30; i++) { days.push(byDate[fmtDate(d)] || 0); d.setDate(d.getDate() + 1); }
+  const max = Math.max(...days, 1);
+  const W = 300, H = 36, P = 2;
+  const pts = days.map((v, i) => {
+    const x = P + i * (W - P * 2) / 29;
+    const y = H - P - (v / max) * (H - P * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return `<svg class="gc-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${esc(color)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>
+  </svg>`;
+}
+
+/* =====================================================
+ * ジャンル新規作成モーダル(S-6)
+ * ===================================================== */
+function openGenreCreateModal(){
+  const m = openModal(`
+    <h2>ジャンルを作成</h2>
+    <div id="gc-step1">
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:10px">テンプレートを選ぶと基本項目が自動でセットされます</p>
+      <div class="tpl-grid">
+        ${TEMPLATES.map(t => `
+          <button class="tpl-card" data-tpl="${t.key}">
+            <span class="tpl-icon">${t.icon}</span>${esc(t.name)}
+            <span class="tpl-desc">${esc(t.desc)}</span>
+          </button>`).join('')}
+      </div>
+    </div>
+    <div id="gc-step2" style="display:none"></div>
+  `);
+
+  $$('.tpl-card', m.el).forEach(btn => {
+    btn.onclick = () => {
+      const tpl = TEMPLATES.find(t => t.key === btn.dataset.tpl);
+      showStep2(tpl);
+    };
+  });
+
+  function showStep2(tpl){
+    const fields = instantiateTemplateFields(tpl);
+    $('#gc-step1', m.el).style.display = 'none';
+    const step2 = $('#gc-step2', m.el);
+    step2.style.display = '';
+    step2.innerHTML = `
+      <button class="mini-btn" id="gc-back" style="margin-bottom:10px">← テンプレート選択に戻る</button>
+      <div class="form-group">
+        <label>ジャンル名<span class="req">必須</span></label>
+        <input type="text" id="gc-name" value="${esc(tpl.key === 'custom' ? '' : tpl.name)}" placeholder="例: 読書" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label>アイコン</label>
+        <div class="emoji-row" id="gc-emoji">
+          ${EMOJIS.map(e => `<button type="button" data-emoji="${e}" class="${e === tpl.icon ? 'selected' : ''}">${e}</button>`).join('')}
+        </div>
+      </div>
+      <div class="form-group">
+        <label>カラー</label>
+        <div class="color-row" id="gc-color">
+          ${COLORS.map(c => `<button type="button" data-color="${c}" class="${c === tpl.color ? 'selected' : ''}" style="background:${c}"></button>`).join('')}
+        </div>
+      </div>
+      <div class="form-group">
+        <label>基本項目(作成後に自由に編集できます)</label>
+        ${fields.length
+          ? `<div class="field-list">${fields.map(f => `
+              <div class="field-row">
+                <div class="f-main">
+                  <span class="f-name">${esc(f.name)}</span><span class="badge preset">基本</span>${f.required ? '<span class="badge req">必須</span>' : ''}
+                  <div class="f-meta">${FIELD_TYPES[f.type].label}${f.unit ? ' / 単位: ' + esc(f.unit) : ''}${f.options ? ' / ' + f.options.map(esc).join('・') : ''}</div>
+                </div>
+              </div>`).join('')}</div>`
+          : `<p class="hint" style="font-size:13px;color:var(--text-sub)">項目なし(作成後に「ジャンル設定」から追加してください)</p>`}
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="gc-cancel">キャンセル</button>
+        <button class="btn" id="gc-create">作成する</button>
+      </div>`;
+
+    let icon = tpl.icon, color = tpl.color;
+    $('#gc-back', m.el).onclick = () => { step2.style.display = 'none'; $('#gc-step1', m.el).style.display = ''; };
+    $('#gc-cancel', m.el).onclick = () => m.close();
+    $$('#gc-emoji button', m.el).forEach(b => b.onclick = () => {
+      icon = b.dataset.emoji;
+      $$('#gc-emoji button', m.el).forEach(x => x.classList.toggle('selected', x === b));
+    });
+    $$('#gc-color button', m.el).forEach(b => b.onclick = () => {
+      color = b.dataset.color;
+      $$('#gc-color button', m.el).forEach(x => x.classList.toggle('selected', x === b));
+    });
+    $('#gc-create', m.el).onclick = async () => {
+      const name = $('#gc-name', m.el).value.trim();
+      if (!name) { $('#gc-name', m.el).classList.add('field-error'); $('#gc-name', m.el).focus(); return; }
+      const genres = await db.getAll('genres');
+      const now = new Date().toISOString();
+      const genre = {
+        id: uid(), name, icon, color,
+        order: genres.length ? Math.max(...genres.map(g => g.order)) + 1 : 0,
+        fields, createdAt: now, updatedAt: now,
+      };
+      await db.put('genres', genre);
+      m.close();
+      toast(`ジャンル「${name}」を作成しました`);
+      location.hash = `#/genre/${genre.id}`;
+      if (location.hash === `#/genre/${genre.id}`) route();
+    };
+  }
+}
+
+/* =====================================================
+ * ジャンル画面(#/genre/:id) 記録一覧 / 統計
+ * ===================================================== */
+let genreTab = 'records'; // 'records' | 'stats'
+let recordListLimit = 50;
+
+async function renderGenre(id){
+  const g = await db.get('genres', id);
+  if (!g) { location.hash = '#/'; return; }
+  setHeader(`
+    <button class="icon-btn" onclick="location.hash='#/'" aria-label="戻る">←</button>
+    <span class="title">${esc(g.icon)} ${esc(g.name)}</span>
+    <button class="icon-btn" onclick="location.hash='#/genre/${g.id}/edit'" aria-label="ジャンル設定">✏️</button>
+  `);
+  const records = (await db.getRecordsByGenre(id)).sort((a, b) =>
+    b.date < a.date ? -1 : b.date > a.date ? 1 : (b.createdAt < a.createdAt ? -1 : 1));
+
+  const view = $('#view');
+  view.innerHTML = `
+    <div class="tabs">
+      <button id="tab-records" class="${genreTab === 'records' ? 'active' : ''}">記録一覧</button>
+      <button id="tab-stats" class="${genreTab === 'stats' ? 'active' : ''}">統計</button>
+    </div>
+    <div id="tab-body"></div>
+    <button class="fab" id="fab-add" aria-label="記録を追加">＋</button>`;
+
+  $('#tab-records').onclick = () => { genreTab = 'records'; recordListLimit = 50; renderGenre(id); };
+  $('#tab-stats').onclick = () => { genreTab = 'stats'; renderGenre(id); };
+  $('#fab-add').onclick = () => openRecordModal(g);
+
+  if (genreTab === 'records') renderRecordList(g, records);
+  else renderStats(g, records);
+}
+
+/* ---- 記録一覧タブ ---- */
+function renderRecordList(g, records){
+  const body = $('#tab-body');
+  if (!records.length) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <div class="big">${esc(g.icon)}</div>
+        <h2>まだ記録がありません</h2>
+        <p>右下の「＋」ボタンから最初の記録をつけましょう</p>
+      </div>`;
+    return;
+  }
+  const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
+  const shown = records.slice(0, recordListLimit);
+  body.innerHTML = `
+    <div id="record-list">${shown.map(r => recordItemHTML(r, fields)).join('')}</div>
+    ${records.length > recordListLimit ? `<button class="btn secondary block" id="btn-more">もっと見る(残り${fmtNum(records.length - recordListLimit)}件)</button>` : ''}`;
+
+  $('#record-list').addEventListener('click', async e => {
+    const item = e.target.closest('.record-item');
+    if (!item) return;
+    const rec = records.find(r => r.id === item.dataset.id);
+    if (!rec) return;
+    if (e.target.closest('[data-edit]')) { openRecordModal(g, rec); return; }
+    if (e.target.closest('[data-del]')) {
+      if (!confirm(`${dateLabel(rec.date)} の記録を削除しますか?`)) return; // 記録1件: confirm 1回
+      await db.delete('records', rec.id);
+      toast('記録を削除しました');
+      renderGenre(g.id);
+    }
+  });
+  const more = $('#btn-more');
+  if (more) more.onclick = () => { recordListLimit += 100; renderGenre(g.id); };
+}
+
+function recordItemHTML(r, fields){
+  const vals = fields
+    .map(f => ({ f, v: displayValue(f, r.values?.[f.id]) }))
+    .filter(x => x.v !== '')
+    .map(x => `<span><span class="k">${esc(x.f.name)}</span><b>${esc(x.v)}</b></span>`)
+    .join('');
+  return `
+    <div class="record-item" data-id="${r.id}">
+      <div class="r-head">
+        <span class="r-date">${esc(dateLabel(r.date))}</span>
+        <span class="r-dow">${esc(r.date)}</span>
+        <span class="r-actions">
+          <button class="mini-btn" data-edit aria-label="編集">✏️</button>
+          <button class="mini-btn danger" data-del aria-label="削除">🗑</button>
+        </span>
+      </div>
+      ${vals ? `<div class="r-values">${vals}</div>` : ''}
+      ${r.memo ? `<div class="r-memo">${esc(r.memo)}</div>` : ''}
+    </div>`;
+}
+
+/* ---- 統計タブ(Phase 2 で実装) ---- */
+function renderStats(g, records){
+  $('#tab-body').innerHTML = `<div class="empty-state"><div class="big">📈</div><h2>統計は準備中です</h2><p>Phase 2 で実装予定</p></div>`;
+}
+
+/* =====================================================
+ * 記録入力モーダル(S-3)
+ * ===================================================== */
+function fieldInputHTML(f, value){
+  const v = value === undefined || value === null ? '' : value;
+  switch (f.type) {
+    case 'number':
+      return `<div class="input-with-unit"><input type="number" step="any" inputmode="decimal" data-fid="${f.id}" value="${esc(v)}">${f.unit ? `<span class="unit">${esc(f.unit)}</span>` : ''}</div>`;
+    case 'text':
+      return `<input type="text" data-fid="${f.id}" value="${esc(v)}">`;
+    case 'date':
+      return `<input type="date" data-fid="${f.id}" value="${esc(v)}">`;
+    case 'select':
+      return `<select data-fid="${f.id}">
+        <option value="">選択してください</option>
+        ${(f.options || []).map(o => `<option value="${esc(o)}" ${String(v) === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+      </select>`;
+    case 'check':
+      return `<label class="check-input"><input type="checkbox" data-fid="${f.id}" ${v === true ? 'checked' : ''}><span>はい</span></label>`;
+    case 'rating': {
+      const n = Number(v) || 0;
+      return `<div class="rating-input" data-fid="${f.id}" data-value="${n}">
+        ${[1,2,3,4,5].map(i => `<button type="button" class="star ${i <= n ? 'on' : ''}" data-star="${i}">★</button>`).join('')}
+        <button type="button" class="clear">クリア</button>
+      </div>`;
+    }
+  }
+  return '';
+}
+
+function readFieldValue(f, container){
+  switch (f.type) {
+    case 'number': {
+      const raw = $(`input[data-fid="${f.id}"]`, container).value.trim();
+      if (raw === '') return undefined;
+      const n = Number(raw);
+      return isFinite(n) ? n : undefined;
+    }
+    case 'text': {
+      const raw = $(`input[data-fid="${f.id}"]`, container).value.trim();
+      return raw === '' ? undefined : raw;
+    }
+    case 'date': {
+      const raw = $(`input[data-fid="${f.id}"]`, container).value;
+      return raw === '' ? undefined : raw;
+    }
+    case 'select': {
+      const raw = $(`select[data-fid="${f.id}"]`, container).value;
+      return raw === '' ? undefined : raw;
+    }
+    case 'check':
+      return $(`input[data-fid="${f.id}"]`, container).checked;
+    case 'rating': {
+      const n = Number($(`.rating-input[data-fid="${f.id}"]`, container).dataset.value) || 0;
+      return n === 0 ? undefined : n;
+    }
+  }
+  return undefined;
+}
+
+function openRecordModal(genre, record = null){
+  const fields = (genre.fields || []).slice().sort((a, b) => a.order - b.order);
+  const isEdit = !!record;
+  const m = openModal(`
+    <h2>${esc(genre.icon)} ${isEdit ? '記録を編集' : '記録をつける'}</h2>
+    <div class="form-group">
+      <label>日付<span class="req">必須</span></label>
+      <input type="date" id="rec-date" value="${esc(record ? record.date : todayStr())}">
+    </div>
+    ${fields.map(f => `
+      <div class="form-group" data-group="${f.id}">
+        <label>${esc(f.name)}${f.required ? '<span class="req">必須</span>' : ''}</label>
+        ${fieldInputHTML(f, record ? record.values?.[f.id] : undefined)}
+        <div class="error-msg" style="display:none">入力してください</div>
+      </div>`).join('')}
+    <div class="form-group">
+      <label>メモ</label>
+      <textarea id="rec-memo" placeholder="自由メモ(任意)">${esc(record ? record.memo || '' : '')}</textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" id="rec-cancel">キャンセル</button>
+      <button class="btn" id="rec-save">${isEdit ? '更新する' : '保存する'}</button>
+    </div>`);
+
+  // 評価(★)ウィジェット
+  $$('.rating-input', m.el).forEach(w => {
+    w.addEventListener('click', e => {
+      const star = e.target.closest('[data-star]');
+      if (star) {
+        w.dataset.value = star.dataset.star;
+      } else if (e.target.closest('.clear')) {
+        w.dataset.value = 0;
+      } else return;
+      const n = Number(w.dataset.value);
+      $$('.star', w).forEach((s, i) => s.classList.toggle('on', i < n));
+    });
+  });
+
+  $('#rec-cancel', m.el).onclick = () => m.close();
+  $('#rec-save', m.el).onclick = async () => {
+    const date = $('#rec-date', m.el).value;
+    if (!date) { $('#rec-date', m.el).classList.add('field-error'); return; }
+
+    // 必須検証
+    let ok = true;
+    const values = {};
+    for (const f of fields) {
+      const v = readFieldValue(f, m.el);
+      const group = $(`[data-group="${f.id}"]`, m.el);
+      const missing = f.required && f.type !== 'check' && (v === undefined);
+      $('.error-msg', group).style.display = missing ? '' : 'none';
+      if (missing) { ok = false; continue; }
+      if (v !== undefined) values[f.id] = v;
+    }
+    if (!ok) return;
+
+    // 定義に存在しない旧項目の値は残置(削除しない)
+    if (isEdit && record.values) {
+      const known = new Set(fields.map(f => f.id));
+      for (const [k, v] of Object.entries(record.values)) {
+        if (!known.has(k) && !(k in values)) values[k] = v;
+      }
+    }
+
+    const now = new Date().toISOString();
+    const rec = isEdit
+      ? { ...record, date, values, memo: $('#rec-memo', m.el).value.trim(), updatedAt: now }
+      : { id: uid(), genreId: genre.id, date, values, memo: $('#rec-memo', m.el).value.trim(), createdAt: now, updatedAt: now };
+    await db.put('records', rec);
+    m.close();
+    toast(isEdit ? '記録を更新しました' : '記録を保存しました');
+    route();
+  };
+}
+
+/* =====================================================
+ * ジャンル設定画面(S-4 / #/genre/:id/edit)
+ * ===================================================== */
+async function renderGenreEdit(id){
+  const g = await db.get('genres', id);
+  if (!g) { location.hash = '#/'; return; }
+  setHeader(`
+    <button class="icon-btn" onclick="location.hash='#/genre/${g.id}'" aria-label="戻る">←</button>
+    <span class="title">ジャンル設定</span>
+  `);
+  const recordCount = await db.countRecordsByGenre(id);
+  const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
+
+  $('#view').innerHTML = `
+    <div class="card">
+      <div class="form-group">
+        <label>ジャンル名<span class="req">必須</span></label>
+        <input type="text" id="ge-name" value="${esc(g.name)}" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label>アイコン</label>
+        <div class="emoji-row" id="ge-emoji">
+          ${EMOJIS.map(e => `<button type="button" data-emoji="${e}" class="${e === g.icon ? 'selected' : ''}">${e}</button>`).join('')}
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>カラー</label>
+        <div class="color-row" id="ge-color">
+          ${COLORS.map(c => `<button type="button" data-color="${c}" class="${c === g.color ? 'selected' : ''}" style="background:${c}"></button>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">記録項目</div>
+    <div class="card">
+      ${fields.length
+        ? `<div class="field-list" id="ge-fields">
+            ${fields.map((f, i) => `
+              <div class="field-row" data-fid="${f.id}">
+                <div class="f-main">
+                  <span class="f-name">${esc(f.name)}</span>${f.preset ? '<span class="badge preset">基本</span>' : ''}${f.required ? '<span class="badge req">必須</span>' : ''}
+                  <div class="f-meta">${FIELD_TYPES[f.type].label}${f.unit ? ' / 単位: ' + esc(f.unit) : ''}${f.options ? ' / ' + f.options.map(esc).join('・') : ''}</div>
+                </div>
+                <button class="mini-btn" data-up ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+                <button class="mini-btn" data-down ${i === fields.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+                <button class="mini-btn" data-fedit aria-label="編集">✏️</button>
+                <button class="mini-btn danger" data-fdel aria-label="削除">🗑</button>
+              </div>`).join('')}
+          </div>`
+        : `<p style="font-size:13px;color:var(--text-sub)">項目がありません。「＋ 項目を追加」から作成してください。</p>`}
+      <button class="btn secondary block" id="ge-add-field" style="margin-top:12px">＋ 項目を追加</button>
+    </div>
+
+    <button class="btn block" id="ge-save" style="margin-top:16px">保存する</button>
+
+    <div class="danger-zone">
+      <h3>⚠️ 危険な操作</h3>
+      <p style="font-size:12px;color:var(--text-sub);margin-bottom:10px">このジャンルと配下の記録 ${fmtNum(recordCount)}件 をすべて削除します。元に戻せません。</p>
+      <button class="btn danger block" id="ge-delete">ジャンルを削除する</button>
+    </div>`;
+
+  let icon = g.icon, color = g.color;
+  $$('#ge-emoji button').forEach(b => b.onclick = () => {
+    icon = b.dataset.emoji;
+    $$('#ge-emoji button').forEach(x => x.classList.toggle('selected', x === b));
+  });
+  $$('#ge-color button').forEach(b => b.onclick = () => {
+    color = b.dataset.color;
+    $$('#ge-color button').forEach(x => x.classList.toggle('selected', x === b));
+  });
+
+  // 名前・アイコン・カラーの保存
+  $('#ge-save').onclick = async () => {
+    const name = $('#ge-name').value.trim();
+    if (!name) { $('#ge-name').classList.add('field-error'); $('#ge-name').focus(); return; }
+    const fresh = await db.get('genres', id);
+    fresh.name = name; fresh.icon = icon; fresh.color = color;
+    fresh.updatedAt = new Date().toISOString();
+    await db.put('genres', fresh);
+    toast('保存しました');
+    location.hash = `#/genre/${id}`;
+  };
+
+  // 項目の追加・編集・削除・並べ替え(即時保存)
+  $('#ge-add-field').onclick = () => openFieldEditModal(g, null);
+  const list = $('#ge-fields');
+  if (list) list.addEventListener('click', async e => {
+    const row = e.target.closest('.field-row');
+    if (!row) return;
+    const fid = row.dataset.fid;
+    const fresh = await db.get('genres', id);
+    const fs = fresh.fields.slice().sort((a, b) => a.order - b.order);
+    const idx = fs.findIndex(f => f.id === fid);
+    if (idx < 0) return;
+
+    if (e.target.closest('[data-up]') || e.target.closest('[data-down]')) {
+      const j = e.target.closest('[data-up]') ? idx - 1 : idx + 1;
+      if (j < 0 || j >= fs.length) return;
+      [fs[idx], fs[j]] = [fs[j], fs[idx]];
+      fs.forEach((f, i) => f.order = i);
+      fresh.fields = fs;
+      fresh.updatedAt = new Date().toISOString();
+      await db.put('genres', fresh);
+      renderGenreEdit(id);
+      return;
+    }
+    if (e.target.closest('[data-fedit]')) { openFieldEditModal(g, fs[idx]); return; }
+    if (e.target.closest('[data-fdel]')) { await deleteFieldFlow(fresh, fs[idx]); return; }
+  });
+
+  // ジャンル削除(件数表示 + ジャンル名の入力一致で解錠)
+  $('#ge-delete').onclick = () => openGenreDeleteModal(g, recordCount);
+}
+
+/* 項目に値が入っている記録の件数 */
+async function countRecordsWithField(genreId, fieldId){
+  const records = await db.getRecordsByGenre(genreId);
+  return records.filter(r => {
+    const v = r.values?.[fieldId];
+    return v !== undefined && v !== null && v !== '';
+  }).length;
+}
+
+/* 項目削除フロー: 「N件の記録に値があります」表示 + confirm */
+async function deleteFieldFlow(genre, field){
+  const n = await countRecordsWithField(genre.id, field.id);
+  const msg = n > 0
+    ? `項目「${field.name}」を削除しますか?\n\n${n}件の記録にこの項目の値があります。\n(値はデータ上残りますが、表示・集計されなくなります)`
+    : `項目「${field.name}」を削除しますか?`;
+  if (!confirm(msg)) return;
+  genre.fields = genre.fields.filter(f => f.id !== field.id);
+  genre.fields.slice().sort((a, b) => a.order - b.order).forEach((f, i) => f.order = i);
+  genre.updatedAt = new Date().toISOString();
+  await db.put('genres', genre); // records側の値は残置(表示時に定義側でフィルタ)
+  toast(`項目「${field.name}」を削除しました`);
+  renderGenreEdit(genre.id);
+}
+
+/* 項目の追加・編集モーダル */
+function openFieldEditModal(genre, field){
+  const isEdit = !!field;
+  const f = field || { name: '', type: 'number', unit: '', options: [], required: false };
+  const m = openModal(`
+    <h2>${isEdit ? '項目を編集' : '項目を追加'}</h2>
+    <div class="form-group">
+      <label>項目名<span class="req">必須</span></label>
+      <input type="text" id="fe-name" value="${esc(f.name)}" maxlength="20" placeholder="例: ページ数">
+    </div>
+    <div class="form-group">
+      <label>型</label>
+      <select id="fe-type">
+        ${Object.entries(FIELD_TYPES).map(([k, t]) => `<option value="${k}" ${f.type === k ? 'selected' : ''}>${t.label}</option>`).join('')}
+      </select>
+      <div class="hint" id="fe-type-hint" style="display:none"></div>
+    </div>
+    <div class="form-group" id="fe-unit-group" style="display:${f.type === 'number' ? '' : 'none'}">
+      <label>単位(任意)</label>
+      <input type="text" id="fe-unit" value="${esc(f.unit || '')}" maxlength="10" placeholder="例: ページ / 円 / km">
+    </div>
+    <div class="form-group" id="fe-options-group" style="display:${f.type === 'select' ? '' : 'none'}">
+      <label>選択肢(1行に1つ)<span class="req">必須</span></label>
+      <textarea id="fe-options" placeholder="例:&#10;ランニング&#10;筋トレ">${esc((f.options || []).join('\n'))}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="check-input"><input type="checkbox" id="fe-required" ${f.required ? 'checked' : ''}><span>必須項目にする</span></label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" id="fe-cancel">キャンセル</button>
+      <button class="btn" id="fe-save">${isEdit ? '更新する' : '追加する'}</button>
+    </div>`);
+
+  $('#fe-type', m.el).onchange = () => {
+    const t = $('#fe-type', m.el).value;
+    $('#fe-unit-group', m.el).style.display = t === 'number' ? '' : 'none';
+    $('#fe-options-group', m.el).style.display = t === 'select' ? '' : 'none';
+  };
+  $('#fe-cancel', m.el).onclick = () => m.close();
+  $('#fe-save', m.el).onclick = async () => {
+    const name = $('#fe-name', m.el).value.trim();
+    const type = $('#fe-type', m.el).value;
+    const unit = $('#fe-unit', m.el).value.trim();
+    const options = $('#fe-options', m.el).value.split('\n').map(s => s.trim()).filter(Boolean);
+    const required = $('#fe-required', m.el).checked;
+    if (!name) { $('#fe-name', m.el).classList.add('field-error'); return; }
+    if (type === 'select' && options.length === 0) { $('#fe-options', m.el).classList.add('field-error'); return; }
+
+    const fresh = await db.get('genres', genre.id);
+
+    // 記録が1件以上ある項目の型変更は、影響件数を示して確認
+    if (isEdit && type !== field.type) {
+      const n = await countRecordsWithField(genre.id, field.id);
+      if (n > 0 && !confirm(`この項目には ${n}件 の記録の値があります。\n型を「${FIELD_TYPES[field.type].label}」から「${FIELD_TYPES[type].label}」に変更すると、既存の値が正しく表示・集計されない場合があります。\n\n変更しますか?`)) {
+        return;
+      }
+    }
+
+    if (isEdit) {
+      const target = fresh.fields.find(x => x.id === field.id);
+      if (!target) { m.close(); return; }
+      Object.assign(target, { name, type, unit: type === 'number' ? unit : '', options: type === 'select' ? options : undefined, required });
+    } else {
+      fresh.fields.push({
+        id: uid(), name, type,
+        unit: type === 'number' ? unit : '',
+        options: type === 'select' ? options : undefined,
+        required, preset: false,
+        order: fresh.fields.length ? Math.max(...fresh.fields.map(x => x.order)) + 1 : 0,
+      });
+    }
+    fresh.updatedAt = new Date().toISOString();
+    await db.put('genres', fresh);
+    m.close();
+    toast(isEdit ? '項目を更新しました' : '項目を追加しました');
+    renderGenreEdit(genre.id);
+  };
+}
+
+/* ジャンル削除モーダル(ジャンル名の入力一致で解錠) */
+function openGenreDeleteModal(genre, recordCount){
+  const m = openModal(`
+    <h2>⚠️ ジャンルを削除</h2>
+    <p style="font-size:13px;margin-bottom:12px">
+      ジャンル「<b>${esc(genre.name)}</b>」と配下の記録 <b style="color:var(--danger)">${fmtNum(recordCount)}件</b> をすべて削除します。<br>
+      この操作は<b>元に戻せません</b>。
+    </p>
+    <div class="form-group">
+      <label>確認のためジャンル名「${esc(genre.name)}」を入力してください</label>
+      <input type="text" id="gd-confirm" placeholder="${esc(genre.name)}" autocomplete="off">
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" id="gd-cancel">キャンセル</button>
+      <button class="btn danger-solid" id="gd-delete" disabled>削除する</button>
+    </div>`);
+
+  const input = $('#gd-confirm', m.el);
+  const btn = $('#gd-delete', m.el);
+  input.addEventListener('input', () => { btn.disabled = input.value.trim() !== genre.name; });
+  $('#gd-cancel', m.el).onclick = () => m.close();
+  btn.onclick = async () => {
+    if (input.value.trim() !== genre.name) return;
+    const records = await db.getRecordsByGenre(genre.id);
+    await db.bulkDelete('records', records.map(r => r.id));
+    await db.delete('genres', genre.id);
+    m.close();
+    toast(`ジャンル「${genre.name}」を削除しました`);
+    location.hash = '#/';
+  };
+}
+
+/* =====================================================
+ * 設定画面(#/settings) Phase 4 で実装
+ * ===================================================== */
+async function renderSettings(){
+  setHeader(`
+    <button class="icon-btn" onclick="location.hash='#/'" aria-label="戻る">←</button>
+    <span class="title">設定</span>
+  `);
+  $('#view').innerHTML = `<div class="empty-state"><div class="big">⚙️</div><h2>設定は準備中です</h2><p>Phase 4 で実装予定(エクスポート/インポート/全削除)</p></div>`;
+}
+
+/* バックアップ促しバナー(Phase 4 で実装) */
+async function backupBannerHTML(){ return ''; }
+function wireBackupBanner(){}
+
+/* ---------- 起動 ---------- */
+(async function init(){
+  await db.init();
+  window.addEventListener('hashchange', route);
+  await route();
+})();
+</script>
+</body>
+</html>
