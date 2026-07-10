@@ -299,13 +299,86 @@
   @keyframes shake{0%,100%{transform:none}25%{transform:translateX(-9px)}75%{transform:translateX(9px)}}
   .shake{animation:shake .25s;}
 
+  /* ── ドロワーメニュー(☰) ── */
+  .drawer-ov{position:fixed; inset:0; background:rgba(34,48,46,.4); z-index:70; opacity:0; transition:opacity .25s;}
+  .drawer-ov.show{opacity:1;}
+  .drawer{
+    position:fixed; top:0; left:0; bottom:0; width:290px; max-width:82vw;
+    background:var(--paper); z-index:71; overflow-y:auto;
+    transform:translateX(-105%); transition:transform .28s cubic-bezier(.22,.9,.3,1);
+    box-shadow:8px 0 30px rgba(34,48,46,.25);
+    padding:22px 14px calc(20px + env(safe-area-inset-bottom));
+  }
+  .drawer.show{transform:none;}
+  .drawer .dtitle{font-size:19px; font-weight:800; letter-spacing:.06em; margin:0 8px;}
+  .drawer .dtitle small{font-size:10px; font-weight:600; color:var(--ink-soft); letter-spacing:.14em; margin-left:6px;}
+  .drawer .druler{height:10px; margin:10px 8px 12px;
+    background:repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 10px);
+    -webkit-mask:linear-gradient(#000 55%, transparent 55%);
+    mask:linear-gradient(#000 55%, transparent 55%); opacity:.35;}
+  .drow{display:flex; align-items:center; gap:14px; padding:13px 10px; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; color:var(--ink);}
+  .drow:active{background:var(--card);}
+  .drow .ic{width:26px; text-align:center; font-size:18px; flex:none;}
+  .drow.sub{font-size:14px; padding:10px 10px 10px 16px;}
+  .dsep{height:1px; background:var(--line); margin:10px 6px;}
+  .dhead{font-size:11px; font-weight:700; color:var(--ink-soft); letter-spacing:.1em; margin:12px 12px 2px;}
+
+  /* ── ⋮ドロップダウンメニュー ── */
+  .pagehead{position:relative; z-index:5;} /* fadeupアニメの積層コンテキストより上に⋮メニューを出す */
+  .kmenu{
+    position:absolute; top:46px; right:0; background:var(--card); border:1px solid var(--line);
+    border-radius:14px; box-shadow:0 12px 34px rgba(34,48,46,.22); z-index:60; min-width:210px; overflow:hidden;
+    transform-origin:top right; animation:kpop .16s ease-out;
+  }
+  @keyframes kpop{from{opacity:0; transform:scale(.9)}to{opacity:1; transform:none}}
+  .kmenu button{display:flex; width:100%; text-align:left; gap:12px; align-items:center; padding:14px 16px; border:none; background:none; font-size:14px; font-weight:600; color:var(--ink); cursor:pointer;}
+  .kmenu button:active{background:var(--paper);}
+  .kmenu button + button{border-top:1px solid var(--line);}
+  .kmenu button.warn{color:var(--danger);}
+
+  /* ── コーチマーク(スポットライト機能ツアー) ── */
+  .coach{position:fixed; inset:0; z-index:85;}
+  .coach-hole{
+    position:absolute; border-radius:18px;
+    box-shadow:0 0 0 4000px color-mix(in srgb, var(--ink) 62%, transparent);
+    transition:all .45s cubic-bezier(.3,.85,.3,1);
+  }
+  .coach-hole::after{content:""; position:absolute; inset:-6px; border:2px solid var(--paper); border-radius:inherit; animation:coachpulse 1.6s ease-out infinite;}
+  @keyframes coachpulse{0%{transform:scale(1); opacity:.95}70%{transform:scale(1.13); opacity:0}100%{opacity:0}}
+  .coach-tip{
+    position:absolute; left:22px; right:22px; color:#F5F7F3; font-size:15px; font-weight:700; line-height:1.9;
+    text-shadow:0 1px 8px rgba(0,0,0,.45); transition:top .45s cubic-bezier(.3,.85,.3,1);
+  }
+  .coach-tip .n{display:block; font-size:11px; letter-spacing:.18em; opacity:.85; margin-bottom:4px; font-family:ui-monospace,Menlo,monospace;}
+  .coach-foot{
+    position:absolute; bottom:calc(26px + env(safe-area-inset-bottom)); left:0; right:0;
+    display:flex; justify-content:space-between; align-items:center; padding:0 26px;
+  }
+  .coach-foot button{border:none; background:none; color:#F5F7F3; font-size:14px; font-weight:700; cursor:pointer; letter-spacing:.08em; padding:10px;}
+  .coach-foot .nextb{background:#F5F7F3; color:#22302E; border-radius:999px; padding:12px 28px; box-shadow:0 6px 18px rgba(0,0,0,.3);}
+
+  /* ── モーション(スタイリッシュ演出) ── */
+  @keyframes fadeup{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
+  #view > *{animation:fadeup .3s ease-out both;}
+  #genre-grid .card{animation:fadeup .38s ease-out both;}
+  #genre-grid .card:nth-child(2){animation-delay:.06s}
+  #genre-grid .card:nth-child(3){animation-delay:.12s}
+  #genre-grid .card:nth-child(4){animation-delay:.18s}
+  #genre-grid .card:nth-child(5){animation-delay:.24s}
+  @keyframes ovfade{from{opacity:0}to{opacity:1}}
+  .overlay{animation:ovfade .2s ease-out;}
+  @keyframes sheetup{from{transform:translateY(44px); opacity:.5}to{transform:none; opacity:1}}
+  .sheet{animation:sheetup .3s cubic-bezier(.22,.9,.3,1);}
+  .rec{transition:transform .12s ease;}
+  .rec:active{transform:scale(.985);}
+
   .toast{
     position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
     background:var(--ink); color:var(--paper); padding:9px 18px; border-radius:999px; font-size:13px;
     z-index:60; opacity:0; transition:opacity .2s; pointer-events:none; white-space:nowrap;
   }
   .toast.show{opacity:1;}
-  @media (prefers-reduced-motion:reduce){ *{transition:none!important;} }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important;} }
 
 </style>
 </head>
@@ -313,7 +386,7 @@
 <div id="frame">
   <header>
     <h1 onclick="location.hash='#/'">MyStats<small>FIELD NOTES</small></h1>
-    <button class="iconbtn" onclick="location.hash='#/settings'" aria-label="設定">⚙︎</button>
+    <button class="iconbtn" id="menu-btn" aria-label="メニュー">☰</button>
   </header>
   <div class="ruler"></div>
   <main id="view"></main>
@@ -601,7 +674,7 @@ let currentGenreId = null; // FABの記録先プリセレクト用
 
 async function route(){
   if (typeof destroyCharts === 'function') destroyCharts(); // 画面遷移時にグラフを破棄
-  $$('.overlay').forEach(o => o.remove()); // 取り残されたモーダルを閉じる(戻るボタン等)
+  $$('.overlay, .drawer, .drawer-ov, .kmenu, .coach').forEach(o => o.remove()); // 取り残されたUIを閉じる(戻るボタン等)
   const hash = location.hash || '#/';
   const gm = hash.match(/^#\/genre\/([^/]+)$/);
   currentGenreId = gm ? gm[1] : null;
@@ -653,6 +726,11 @@ async function renderDashboard(){
   add.textContent = '＋ ジャンルを追加(テンプレートから)';
   add.onclick = () => openGenreCreateModal();
   grid.appendChild(add);
+
+  // チュートリアル済みでツアー未実施なら、実画面ツアーを一度だけ表示
+  if (await db.getMeta('tutorialDone') && !(await db.getMeta('coachDashDone'))) {
+    setTimeout(() => startCoachTour(DASH_TOUR, 'coachDashDone'), 400);
+  }
 }
 
 /* ジャンルカード: 代表項目(先頭の数値項目)の今月合計 + 30日スパークライン */
@@ -784,7 +862,7 @@ async function renderGenre(id){
     <div class="pagehead" style="--gcolor:${esc(g.color)}">
       <button class="back" id="btn-back" aria-label="戻る">‹</button>
       <h2>${esc(g.icon)} ${esc(g.name)}</h2><span class="spacer"></span>
-      <button class="iconbtn" id="btn-edit" aria-label="ジャンル設定">✎</button>
+      <button class="iconbtn" id="btn-kebab" aria-label="メニュー">⋮</button>
     </div>
     <div class="tabs">
       <button id="tab-stats" class="${genreTab === 'stats' ? 'on' : ''}">統計</button>
@@ -793,12 +871,25 @@ async function renderGenre(id){
     <div id="tab-body"></div>`;
 
   $('#btn-back').onclick = () => location.hash = '#/';
-  $('#btn-edit').onclick = () => location.hash = `#/genre/${g.id}/edit`;
+  $('#btn-kebab').onclick = e => {
+    e.stopPropagation();
+    openKebab($('.pagehead'), [
+      { icon: '✎', label: 'ジャンル設定(項目の編集)', run: () => location.hash = `#/genre/${g.id}/edit` },
+      { icon: '📤', label: '統計をシェア', run: () => shareStats(g, filterByPeriod(records, statsPeriod), (PERIODS.find(p => p.key === statsPeriod) || {}).label || '') },
+      { icon: '⬇', label: 'CSVエクスポート', run: () => exportCSV(g.id) },
+      { icon: '🗑', label: 'ジャンルを削除', warn: true, run: () => openGenreDeleteModal(g, records.length) },
+    ]);
+  };
   $('#tab-stats').onclick = () => { genreTab = 'stats'; renderGenre(id); };
   $('#tab-records').onclick = () => { genreTab = 'records'; recordListLimit = 50; renderGenre(id); };
 
   if (genreTab === 'records') renderRecordList(g, records);
   else renderStats(g, records);
+
+  // 初回のみジャンル画面の操作ツアー(チュートリアルをスキップした人には出さない)
+  if (await db.getMeta('tutorialDone') && !(await db.getMeta('coachGenreDone'))) {
+    setTimeout(() => startCoachTour(GENRE_TOUR, 'coachGenreDone'), 400);
+  }
 }
 
 /* ---- 記録一覧タブ ---- */
@@ -1845,7 +1936,7 @@ async function renderSettings(){
     appSettings.chartType = k; await saveSettings(); renderSettings();
   });
   $('#set-lock').onclick = () => openLockSettings();
-  $('#set-tutorial').onclick = () => showTutorial();
+  $('#set-tutorial').onclick = () => showTutorial(true);
 }
 
 /* 選択シート(iOS風: 現在値に✓) */
@@ -2148,6 +2239,135 @@ function verifyPinThen(lock, onOk){
 }
 
 /* =====================================================
+ * ドロワーメニュー(☰) — 画像のようなアイコン付きメニューバー
+ * ===================================================== */
+async function openDrawer(){
+  $$('.drawer, .drawer-ov').forEach(o => o.remove());
+  const genres = (await db.getAll('genres')).sort((a, b) => a.order - b.order);
+  const ov = document.createElement('div');
+  ov.className = 'drawer-ov';
+  const dr = document.createElement('div');
+  dr.className = 'drawer';
+  dr.innerHTML = `
+    <div class="dtitle">MyStats<small>FIELD NOTES</small></div>
+    <div class="druler"></div>
+    <div class="drow" data-go="#/"><span class="ic">🏠</span>ホーム</div>
+    <div class="drow" id="dr-add"><span class="ic">＋</span>ジャンルを追加</div>
+    ${genres.length ? `<div class="dhead">ジャンル</div>` +
+      genres.map(g => `<div class="drow sub" data-go="#/genre/${g.id}"><span class="ic">${esc(g.icon)}</span>${esc(g.name)}</div>`).join('') : ''}
+    <div class="dsep"></div>
+    <div class="drow" data-go="#/settings"><span class="ic">⚙︎</span>設定</div>
+    <div class="drow" id="dr-tut"><span class="ic">❓</span>使い方</div>
+    <div class="drow" id="dr-share"><span class="ic">📤</span>アプリを共有</div>`;
+  document.body.appendChild(ov);
+  document.body.appendChild(dr);
+  requestAnimationFrame(() => { ov.classList.add('show'); dr.classList.add('show'); });
+  const close = () => {
+    ov.classList.remove('show'); dr.classList.remove('show');
+    setTimeout(() => { ov.remove(); dr.remove(); }, 280);
+  };
+  ov.onclick = close;
+  $$('.drow[data-go]', dr).forEach(r => r.onclick = () => {
+    close();
+    const h = r.dataset.go;
+    if (location.hash === h) route(); else location.hash = h;
+  });
+  $('#dr-add', dr).onclick = () => { close(); openGenreCreateModal(); };
+  $('#dr-tut', dr).onclick = () => { close(); showTutorial(true); };
+  $('#dr-share', dr).onclick = async () => {
+    close();
+    const url = location.protocol.startsWith('http') ? location.href.split('#')[0] : '';
+    const text = 'なんでも記録ノート「MyStats」';
+    if (navigator.share) {
+      try { await navigator.share({ title: 'MyStats', text, url: url || undefined }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url ? text + ' ' + url : text); toast('アプリのURLをコピーしました'); }
+    catch (e) { toast('共有機能を利用できませんでした'); }
+  };
+}
+
+/* =====================================================
+ * ⋮ドロップダウンメニュー(画像のようなコンテキストメニュー)
+ * ===================================================== */
+function openKebab(anchor, items){
+  $$('.kmenu').forEach(k => k.remove());
+  const m = document.createElement('div');
+  m.className = 'kmenu';
+  m.innerHTML = items.map((it, i) =>
+    `<button data-i="${i}" class="${it.warn ? 'warn' : ''}"><span>${it.icon}</span>${esc(it.label)}</button>`).join('');
+  anchor.appendChild(m);
+  const closer = e => {
+    if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', closer, true); }
+  };
+  setTimeout(() => document.addEventListener('click', closer, true));
+  $$('button', m).forEach(b => b.onclick = () => {
+    m.remove();
+    document.removeEventListener('click', closer, true);
+    items[+b.dataset.i].run();
+  });
+}
+
+/* =====================================================
+ * コーチマーク(スポットライト機能ツアー)
+ *  画面を暗くして実際のボタンをハイライトし、説明をモーション付きで表示
+ * ===================================================== */
+const DASH_TOUR = [
+  { sel: '#fab', text: '「＋ 記録」— 毎日の記録はここから。10秒で完了します。', round: true },
+  { sel: '#genre-grid .addgenre', text: '「ジャンルを追加」— 読書・運動などテンプレートから記録のテーマを作れます。' },
+  { sel: '#genre-grid .card', text: 'ジャンルカード — 今月の集計が一目でわかります。タップすると統計と記録一覧へ。' },
+  { sel: '.streak', text: '連続記録 — 毎日つけると🔥の数字が伸びていきます。' },
+  { sel: '#menu-btn', text: 'メニュー — ジャンル一覧・設定・バックアップ・使い方はここから。', round: true },
+];
+const GENRE_TOUR = [
+  { sel: '#tab-stats', text: '「統計」タブ — 合計・平均・グラフで振り返れます。期間も切り替えられます。' },
+  { sel: '#tab-records', text: '「記録一覧」タブ — 過去の記録の確認・編集・削除・シェアができます。' },
+  { sel: '#btn-kebab', text: 'ジャンルメニュー — 項目の編集(単位や型)、シェア、CSV出力はここから。', round: true },
+  { sel: '#fab', text: 'このジャンルへの記録もここから。まずは1件つけてみましょう。', round: true },
+];
+
+function startCoachTour(steps, doneKey){
+  steps = steps.filter(s => document.querySelector(s.sel));
+  if (!steps.length) { if (doneKey) db.setMeta(doneKey, true); return; }
+  $$('.coach').forEach(c => c.remove());
+  const ov = document.createElement('div');
+  ov.className = 'coach';
+  ov.innerHTML = `
+    <div class="coach-hole"></div>
+    <div class="coach-tip"><span class="n"></span><span class="t"></span></div>
+    <div class="coach-foot">
+      <button id="coach-skip">スキップ</button>
+      <button class="nextb" id="coach-next">つぎへ</button>
+    </div>`;
+  document.body.appendChild(ov);
+  const hole = $('.coach-hole', ov), tip = $('.coach-tip', ov);
+  let i = 0;
+  function show(){
+    const el = document.querySelector(steps[i].sel);
+    if (!el) { next(); return; }
+    el.scrollIntoView({ block: 'center' });
+    const r = el.getBoundingClientRect();
+    const pad = 10;
+    hole.style.left = (r.left - pad) + 'px';
+    hole.style.top = (r.top - pad) + 'px';
+    hole.style.width = (r.width + pad * 2) + 'px';
+    hole.style.height = (r.height + pad * 2) + 'px';
+    hole.style.borderRadius = steps[i].round ? '999px' : '18px';
+    $('.n', tip).textContent = `${i + 1} / ${steps.length}`;
+    $('.t', tip).textContent = steps[i].text;
+    const spaceBelow = window.innerHeight - r.bottom;
+    tip.style.top = (spaceBelow > 160 ? r.bottom + pad + 22 : Math.max(20, r.top - pad - 130)) + 'px';
+    $('#coach-next', ov).textContent = i === steps.length - 1 ? 'おわり' : 'つぎへ';
+  }
+  function finish(){ ov.remove(); if (doneKey) db.setMeta(doneKey, true); }
+  function next(){ if (i < steps.length - 1) { i++; show(); } else finish(); }
+  $('#coach-next', ov).onclick = next;
+  $('#coach-skip', ov).onclick = finish;
+  ov.addEventListener('click', e => { if (!e.target.closest('button')) next(); });
+  show();
+}
+
+/* =====================================================
  * 初回チュートリアル(横スライド・スワイプ対応)
  * ===================================================== */
 const TUT_SLIDES = [
@@ -2160,10 +2380,10 @@ const TUT_SLIDES = [
 
 async function maybeShowTutorial(){
   if (await db.getMeta('tutorialDone')) return;
-  showTutorial();
+  showTutorial(false);
 }
 
-function showTutorial(){
+function showTutorial(isReplay){
   const ov = document.createElement('div');
   ov.className = 'tut-overlay';
   ov.innerHTML = `
@@ -2188,12 +2408,24 @@ function showTutorial(){
     const i = Math.round(slides.scrollLeft / slides.clientWidth);
     if (i !== idx && i >= 0 && i < TUT_SLIDES.length) setIdx(i);
   }, { passive: true });
-  async function finish(){ ov.remove(); await db.setMeta('tutorialDone', true); }
+  async function finish(viaStart){
+    ov.remove();
+    await db.setMeta('tutorialDone', true);
+    if (!viaStart && !isReplay) {
+      // 初回にスキップした人には操作ツアーも出さない(見たい時は「使い方」から)
+      await db.setMeta('coachDashDone', true);
+      await db.setMeta('coachGenreDone', true);
+      return;
+    }
+    if (viaStart && (location.hash === '#/' || location.hash === '' || location.hash === '#')) {
+      setTimeout(() => startCoachTour(DASH_TOUR, 'coachDashDone'), 300); // スライドの後は実画面ツアー
+    }
+  }
   $('#tut-next', ov).onclick = () => {
     if (idx < TUT_SLIDES.length - 1) slides.scrollTo({ left: (idx + 1) * slides.clientWidth, behavior: 'smooth' });
-    else finish();
+    else finish(true);
   };
-  $('#tut-skip', ov).onclick = finish;
+  $('#tut-skip', ov).onclick = () => finish(false);
 }
 
 /* =====================================================
@@ -2286,6 +2518,7 @@ window.mystatsDev = {
     const g = genres.find(x => x.id === gid) || genres[0];
     openRecordModal(g, null, { pickable: true });
   };
+  $('#menu-btn').onclick = () => openDrawer();
   window.addEventListener('hashchange', route);
   await route();
   maybeShowTutorial(); // 初回起動時のみ表示
