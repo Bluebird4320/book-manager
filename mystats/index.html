@@ -585,6 +585,8 @@ const db = {
   }
 };
 
+const APP_BUILD = '2026-07-11.1'; // 設定画面に表示(デプロイ反映の確認用)
+
 /* ---------- アプリ設定(metaストアに保存 / iOS風設定画面) ---------- */
 let appSettings = { theme: 'auto', weekStart: 'mon', chartType: 'auto' };
 const THEME_LABEL = { auto: '自動', light: 'ライト', dark: 'ダーク' };
@@ -2242,7 +2244,7 @@ async function renderSettings(){
     <div class="setrow" id="set-tutorial"><span>❓ 使い方(チュートリアル)</span><span class="arr">›</span></div>
     <div class="sethead">危険な操作</div>
     <div class="setrow warn" id="st-delete-all">すべてのデータを削除<span class="arr">›</span></div>
-    <div class="banner" style="margin-top:20px"><span class="b-main">データはこの端末の${memoryMode ? 'メモリ(一時)' : 'IndexedDB'}に保存され、オフラインでも保持されます。<br>現在: ジャンル ${genres.length} 件・記録 ${fmtNum(records.length)} 件${lastExportAt ? ` / 最終バックアップ ${new Date(lastExportAt).toLocaleString('ja-JP')}` : ' / バックアップ未実施'}</span></div>`;
+    <div class="banner" style="margin-top:20px"><span class="b-main">データはこの端末の${memoryMode ? 'メモリ(一時)' : 'IndexedDB'}に保存され、オフラインでも保持されます。<br>現在: ジャンル ${genres.length} 件・記録 ${fmtNum(records.length)} 件${lastExportAt ? ` / 最終バックアップ ${new Date(lastExportAt).toLocaleString('ja-JP')}` : ' / バックアップ未実施'}<br>バージョン: ${APP_BUILD}</span></div>`;
 
   $('#btn-back').onclick = () => location.hash = '#/';
   $('#st-export').onclick = () => exportJSON().then(() => renderSettings());
