@@ -372,6 +372,29 @@
   .rec{transition:transform .12s ease;}
   .rec:active{transform:scale(.985);}
 
+  /* ── 累計マイルストーン ── */
+  .mstone{margin-top:10px;}
+  .ms-bar{height:6px; border-radius:999px; background:var(--line); overflow:hidden;}
+  .ms-bar i{display:block; height:100%; background:var(--gcolor,var(--ink)); border-radius:999px; transition:width .6s cubic-bezier(.3,.85,.3,1);}
+  .ms-txt{font-size:11px; color:var(--ink-soft); margin-top:5px; letter-spacing:.04em;}
+  .ms-txt b{color:var(--ink); font-family:ui-monospace,Menlo,monospace;}
+
+  /* ── 節目達成のお祝い ── */
+  .celebrate{position:fixed; inset:0; z-index:95; display:flex; align-items:center; justify-content:center; background:rgba(34,48,46,.55); animation:ovfade .2s ease-out;}
+  .celebrate .cbox{
+    background:var(--paper); border-radius:22px; padding:30px 28px calc(24px); text-align:center;
+    width:300px; max-width:86vw; box-shadow:0 20px 60px rgba(0,0,0,.35);
+    animation:cpop .45s cubic-bezier(.2,1.2,.35,1);
+  }
+  @keyframes cpop{from{transform:scale(.6); opacity:0}to{transform:none; opacity:1}}
+  .celebrate .cemoji{font-size:64px; line-height:1; display:inline-block; animation:cbounce 1s ease infinite alternate;}
+  @keyframes cbounce{from{transform:translateY(0) rotate(-4deg)}to{transform:translateY(-8px) rotate(4deg)}}
+  .celebrate h2{font-size:21px; font-weight:800; margin:14px 0 6px;}
+  .celebrate h2 b{font-family:ui-monospace,Menlo,monospace;}
+  .celebrate p{font-size:13px; color:var(--ink-soft); margin-bottom:18px; line-height:1.8;}
+  .celebrate .confetti{position:absolute; top:-10px; font-size:22px; animation:cfall 1.6s linear infinite;}
+  @keyframes cfall{from{transform:translateY(-40px) rotate(0)} to{transform:translateY(110vh) rotate(360deg)}}
+
   .toast{
     position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
     background:var(--ink); color:var(--paper); padding:9px 18px; border-radius:999px; font-size:13px;
@@ -768,12 +791,15 @@ async function genreCardEl(g){
   const monthStart = todayStr().slice(0, 7) + '-01';
   const monthRecords = records.filter(r => r.date >= monthStart);
   // ホームに表示する項目: ジャンル設定で明示選択(未設定なら一番上の数値項目、'__count__'なら記録数)
-  const numberFields = (g.fields || []).filter(x => x.type === 'number').sort((a, b) => a.order - b.order);
-  const f = g.repFieldId === '__count__' ? null
-    : (numberFields.find(x => x.id === g.repFieldId) || numberFields[0] || null);
+  const f = repNumberField(g);
   const total = f
     ? monthRecords.reduce((s, r) => s + (Number(r.values?.[f.id]) || 0), 0)
     : monthRecords.length;
+  // 累計マイルストーン(全期間)
+  const cum = cumulativeValue(g, records);
+  const msNext = nextMilestone(cum.value);
+  const msPrev = prevMilestone(cum.value);
+  const msPct = Math.max(2, Math.min(100, Math.round((cum.value - msPrev) / (msNext - msPrev) * 100)));
 
   const el = document.createElement('div');
   el.className = 'card';
@@ -787,9 +813,71 @@ async function genreCardEl(g){
       </div>
       ${sparklineSVG(records, f, g.color)}
     </div>
-    ${records.length === 0 ? '<div class="sub" style="margin-top:6px">「＋ 記録」から1件つけると集計とグラフが始まります</div>' : ''}`;
+    ${records.length === 0
+      ? '<div class="sub" style="margin-top:6px">「＋ 記録」から1件つけると集計とグラフが始まります</div>'
+      : `<div class="mstone">
+           <div class="ms-bar"><i style="width:${msPct}%"></i></div>
+           <div class="ms-txt">累計 <b>${fmtNum(cum.value)}</b>${esc(cum.unit)} ・ 次の節目 ${fmtNum(msNext)}${esc(cum.unit)} まで あと<b>${fmtNum(msNext - cum.value)}</b></div>
+         </div>`}`;
   el.onclick = () => { location.hash = `#/genre/${g.id}`; };
   return el;
+}
+
+/* ホーム/累計の対象項目(明示選択 or 一番上の数値項目。nullなら記録数) */
+function repNumberField(g){
+  const numberFields = (g.fields || []).filter(x => x.type === 'number').sort((a, b) => a.order - b.order);
+  if (g.repFieldId === '__count__') return null;
+  return numberFields.find(x => x.id === g.repFieldId) || numberFields[0] || null;
+}
+
+/* 全期間の累計値(代表項目の合計 / なければ記録数) */
+function cumulativeValue(g, records){
+  const f = repNumberField(g);
+  const value = f
+    ? records.reduce((s, r) => s + (Number(r.values?.[f.id]) || 0), 0)
+    : records.length;
+  return { field: f, value, unit: f ? (f.unit || '') : '件', label: f ? f.name : '記録数' };
+}
+
+/* 節目のはしご: 10,25,50 × 10^k (10,25,50,100,250,500,1000,…) */
+function nextMilestone(v){
+  for (let base = 1; base <= 1e12; base *= 10) {
+    for (const s of [10, 25, 50]) {
+      const m = s * base;
+      if (v < m) return m;
+    }
+  }
+  return 1e13;
+}
+function prevMilestone(v){
+  let prev = 0;
+  for (let base = 1; base <= 1e12; base *= 10) {
+    for (const s of [10, 25, 50]) {
+      const m = s * base;
+      if (m <= v) prev = m; else return prev;
+    }
+  }
+  return prev;
+}
+
+/* 節目達成のお祝い表示 */
+function showMilestoneCelebration(genre, milestone, unit){
+  $$('.celebrate').forEach(c => c.remove());
+  const ov = document.createElement('div');
+  ov.className = 'celebrate';
+  const confetti = ['🎉', '✨', '🎊', '⭐', '✨', '🎉'].map((e, i) =>
+    `<span class="confetti" style="left:${8 + i * 16}%; animation-delay:${i * 0.22}s">${e}</span>`).join('');
+  ov.innerHTML = `
+    ${confetti}
+    <div class="cbox">
+      <span class="cemoji">🏆</span>
+      <h2>累計 <b>${fmtNum(milestone)}</b>${esc(unit)} 突破!</h2>
+      <p>${esc(genre.icon)} ${esc(genre.name)}の積み重ねが節目に到達しました。<br>この調子!</p>
+      <button class="btn primary" style="width:100%" id="cel-ok">つづける</button>
+    </div>`;
+  document.body.appendChild(ov);
+  $('#cel-ok', ov).onclick = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
 }
 
 /* 連続記録日数(今日または昨日を起点に遡る) */
@@ -1170,6 +1258,23 @@ function renderStats(g, records){
     return;
   }
 
+  // 累計マイルストーン(全期間・期間フィルタに依存しない)
+  const cum = cumulativeValue(g, records);
+  if (cum.value > 0) {
+    const msNext = nextMilestone(cum.value);
+    const msPrev = prevMilestone(cum.value);
+    const msPct = Math.max(2, Math.min(100, Math.round((cum.value - msPrev) / (msNext - msPrev) * 100)));
+    html += `
+      <div class="chartbox" style="--gcolor:${esc(g.color)}">
+        <h3>🏁 累計マイルストーン — ${esc(cum.label)}(全期間)</h3>
+        <div class="v" style="font:800 28px/1.2 ui-monospace,'SF Mono',Menlo,monospace">${fmtNum(cum.value)}<small style="font:600 12px 'Hiragino Sans',sans-serif;color:var(--ink-soft)"> ${esc(cum.unit)}</small></div>
+        <div class="mstone">
+          <div class="ms-bar"><i style="width:${msPct}%"></i></div>
+          <div class="ms-txt">前の節目 ${fmtNum(msPrev)} → 次の節目 <b>${fmtNum(msNext)}</b>${esc(cum.unit)} まで あと<b>${fmtNum(msNext - cum.value)}</b></div>
+        </div>
+      </div>`;
+  }
+
   // サマリーカード(F-4-1: 合計/平均/最大/最小/件数)
   const multi = numberFields.length > 1;
   html += `<div class="grid2">`;
@@ -1468,11 +1573,22 @@ function openRecordModal(genre, record = null, opts = {}){
     const rec = isEdit
       ? { ...record, date, values, memo: $('#rec-memo', m.el).value.trim(), updatedAt: now }
       : { id: uid(), genreId: genre.id, date, values, memo: $('#rec-memo', m.el).value.trim(), createdAt: now, updatedAt: now };
+
+    // 累計マイルストーン判定(保存前後の累計を比較)
+    const freshGenre = await db.get('genres', genre.id) || genre;
+    const before = cumulativeValue(freshGenre, await db.getRecordsByGenre(genre.id));
     await db.put('records', rec);
     await db.setMeta('lastGenreId', genre.id); // FABの記録先で前回選択を記憶
+    const after = cumulativeValue(freshGenre, await db.getRecordsByGenre(genre.id));
+
     m.close();
     toast(isEdit ? '更新しました ✓' : '保存しました ✓');
     route();
+
+    // 跨いだ節目のうち最大のものを祝う
+    let crossed = 0;
+    for (let ms = nextMilestone(before.value); ms <= after.value; ms = nextMilestone(ms)) crossed = ms;
+    if (crossed > 0) setTimeout(() => showMilestoneCelebration(genre, crossed, after.unit), 350);
   };
 }
 
