@@ -623,6 +623,40 @@ const TEMPLATES = [
     fields: [] },
 ];
 
+/* 基本項目は固定仕様: 既存データの基本項目をテンプレート定義に復元する(初回のみ) */
+async function migratePresetLock(){
+  if (await db.getMeta('presetLockMigrated')) return;
+  const genres = await db.getAll('genres');
+  for (const g of genres) {
+    const presets = (g.fields || []).filter(f => f.preset).sort((a, b) => a.order - b.order);
+    if (!presets.length) continue;
+    // 型の並びが一致するテンプレートを特定(並べ替え等で崩れている場合は触らない)
+    const tpl = TEMPLATES.find(t =>
+      t.fields.length === presets.length &&
+      t.fields.every((tf, i) => tf.type === presets[i].type));
+    if (!tpl) continue;
+    // 単位の入れ替わりが疑われる場合(同型の別位置の単位と一致)は安全のためスキップ
+    const swapRisk = presets.some((f, i) =>
+      (f.unit || '') !== (tpl.fields[i].unit || '') &&
+      tpl.fields.some((tf2, j) => j !== i && tf2.type === f.type && (tf2.unit || '') === (f.unit || '')));
+    if (swapRisk) continue;
+    let changed = false;
+    tpl.fields.forEach((tf, i) => {
+      const f = presets[i];
+      if (f.name !== tf.name || (f.unit || '') !== (tf.unit || '') || !!f.required !== !!tf.required) changed = true;
+      f.name = tf.name;
+      f.unit = tf.unit || '';
+      f.options = tf.options ? [...tf.options] : undefined;
+      f.required = !!tf.required;
+    });
+    if (changed) {
+      g.updatedAt = new Date().toISOString();
+      await db.put('genres', g);
+    }
+  }
+  await db.setMeta('presetLockMigrated', true);
+}
+
 /* テンプレートの fields を実体(コピー+id付与+preset:true)に変換 */
 function instantiateTemplateFields(tpl){
   return tpl.fields.map((f, i) => ({
@@ -808,7 +842,7 @@ function openGenreCreateModal(){
         ${t.fields.length
           ? t.fields.map(f => `<div class="frow"><span class="fn">${esc(f.name)}</span><span class="badge">${FIELD_TYPES[f.type].label}${f.unit ? ' / ' + esc(f.unit) : ''}</span>${f.required ? '<span class="badge">必須</span>' : ''}</div>`).join('')
           : `<div class="banner" style="margin:0 0 8px">空のジャンルです。作成後に項目を自由に追加してください。</div>`}
-        <div class="note2">作成後、基本項目の編集も追加項目の定義も自由にできます。</div>
+        <div class="note2">基本項目は固定です。作成後、自分だけの項目を自由に追加できます。</div>
       </div>
       <div class="btnrow"><button class="btn ghost" id="gc-cancel">キャンセル</button><button class="btn primary" id="gc-create">作成する</button></div>`;
 
@@ -1476,7 +1510,7 @@ async function renderGenreEdit(id){
     </div>
 
     <div class="sethead">項目の定義 — 基本項目+自由追加</div>
-    <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。↑↓はフォームでの表示順の変更です。</div>
+    <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。↑↓はフォームでの表示順の変更です。<br>「基本」バッジの項目はこのジャンルの基本項目のため固定です(追加した項目のみ✎編集・🗑削除できます)。</div>
     <div id="ge-fields">
       ${fields.map((f, i) => `
         <div class="frow" data-fid="${f.id}">
@@ -1485,8 +1519,9 @@ async function renderGenreEdit(id){
           ${f.id === homeFieldId ? '<span class="badge">ホーム</span>' : ''}${f.preset ? '<span class="badge preset">基本</span>' : ''}${f.required ? '<span class="badge">必須</span>' : ''}
           <button class="rowbtn" data-up ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
           <button class="rowbtn" data-down ${i === fields.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
-          <button class="rowbtn" data-fedit aria-label="編集">✎</button>
-          <button class="rowbtn" data-fdel aria-label="項目を削除">🗑</button>
+          ${f.preset
+            ? '<span class="rowbtn" style="opacity:.3" title="基本項目は固定です">🔒</span>'
+            : '<button class="rowbtn" data-fedit aria-label="編集">✎</button><button class="rowbtn" data-fdel aria-label="項目を削除">🗑</button>'}
         </div>`).join('')}
     </div>
     <button class="addgenre" id="ge-add-field">＋ 項目を追加</button>
@@ -1575,6 +1610,7 @@ async function countRecordsWithField(genreId, fieldId){
 
 /* 項目削除フロー: 影響件数表示 + confirm */
 async function deleteFieldFlow(genre, field){
+  if (field.preset) { toast('基本項目は削除できません'); return; }
   const n = await countRecordsWithField(genre.id, field.id);
   const msg = `項目「${field.name}」を削除しますか?` +
     (n > 0 ? `\n※ ${n} 件の記録にこの項目の値があります(値は残置され非表示になります)` : '');
@@ -1590,6 +1626,7 @@ async function deleteFieldFlow(genre, field){
 
 /* 項目の追加・編集シート */
 function openFieldEditModal(genre, field){
+  if (field && field.preset) { toast('基本項目は固定です(追加した項目のみ編集できます)'); return; }
   const isEdit = !!field;
   const f = field || { name: '', type: 'number', unit: '', options: [], required: false };
   const m = openModal(`
@@ -2367,7 +2404,7 @@ function startCoachTour(steps, doneKey){
  * ===================================================== */
 const TUT_SLIDES = [
   { icon: '📊', title: 'ようこそ「MyStats」', body: '読書・運動・支出…すきなことを記録して、あとからふりかえれる「なんでも記録ノート」です。' },
-  { icon: '📚', title: '① ジャンルをつくる', body: '「＋ ジャンルを追加」からテンプレートをえらぶだけ。記録する項目はあとから自由にかえられます。' },
+  { icon: '📚', title: '① ジャンルをつくる', body: '「＋ ジャンルを追加」からテンプレートをえらぶだけ。項目はあとから自由に追加できます。' },
   { icon: '✏️', title: '② 「＋ 記録」でつける', body: '画面下のボタンから、1日10秒で記録。日付は自動で今日になります。' },
   { icon: '📈', title: '③ グラフでふりかえる', body: '合計や平均、連続記録(🔥)が自動で集計。つづけるのが楽しくなります。' },
   { icon: '🔒', title: 'データはこの端末の中だけ', body: '記録は外部に送信されません。設定からバックアップ・パスコードロック・SNSシェアができます。' },
@@ -2503,6 +2540,7 @@ window.mystatsDev = {
 /* ---------- 起動 ---------- */
 (async function init(){
   await db.init();
+  await migratePresetLock(); // 基本項目をテンプレート定義に復元(初回のみ)
   await loadSettings();
   // ツアーは初回起動時のみ: 2回目以降の起動では自動表示しない(「使い方」から再生は可能)
   if (await db.getMeta('tutorialDone')) {
