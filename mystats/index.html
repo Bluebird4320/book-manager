@@ -726,11 +726,6 @@ async function renderDashboard(){
   add.textContent = '＋ ジャンルを追加(テンプレートから)';
   add.onclick = () => openGenreCreateModal();
   grid.appendChild(add);
-
-  // チュートリアル済みでツアー未実施なら、実画面ツアーを一度だけ表示
-  if (await db.getMeta('tutorialDone') && !(await db.getMeta('coachDashDone'))) {
-    setTimeout(() => startCoachTour(DASH_TOUR, 'coachDashDone'), 400);
-  }
 }
 
 /* ジャンルカード: 代表項目(先頭の数値項目)の今月合計 + 30日スパークライン */
@@ -2509,6 +2504,11 @@ window.mystatsDev = {
 (async function init(){
   await db.init();
   await loadSettings();
+  // ツアーは初回起動時のみ: 2回目以降の起動では自動表示しない(「使い方」から再生は可能)
+  if (await db.getMeta('tutorialDone')) {
+    if (!(await db.getMeta('coachDashDone'))) await db.setMeta('coachDashDone', true);
+    if (!(await db.getMeta('coachGenreDone'))) await db.setMeta('coachGenreDone', true);
+  }
   await requireUnlockIfNeeded(); // ロック有効時は解除まで進まない
   // FAB「＋ 記録」: ジャンル未作成なら作成へ、あれば記録シート(ジャンル切替チップ付き)
   $('#fab').onclick = async () => {
