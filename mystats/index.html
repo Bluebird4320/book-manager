@@ -252,6 +252,14 @@
   }
   .frow .fn{flex:1; font-weight:700; min-width:72px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .frow .rowbtn{border:none;background:none;color:var(--ink-soft);font-size:14px;cursor:pointer;padding:4px 5px;}
+  .frow{user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
+  .draghandle{cursor:grab; touch-action:none; color:var(--ink-soft); font-size:15px; padding:4px 8px 4px 2px; letter-spacing:-2px; flex:none;}
+  .frow.drag-src{opacity:.3;}
+  .frow-ghost{
+    position:fixed; z-index:120; pointer-events:none; margin:0;
+    box-shadow:0 14px 34px rgba(34,48,46,.32); transform:scale(1.03); opacity:.97;
+    background:var(--card);
+  }
   .frow .rowbtn:disabled{opacity:.25; cursor:default;}
   .badge{font-size:10.5px; padding:2px 8px; border-radius:999px; background:var(--paper); border:1px solid var(--line); color:var(--ink-soft); white-space:nowrap;}
   .sethead{font-size:12px; font-weight:700; color:var(--ink-soft); letter-spacing:.1em; margin:18px 4px 8px;}
@@ -731,7 +739,7 @@ let currentGenreId = null; // FABの記録先プリセレクト用
 
 async function route(){
   if (typeof destroyCharts === 'function') destroyCharts(); // 画面遷移時にグラフを破棄
-  $$('.overlay, .drawer, .drawer-ov, .kmenu, .coach').forEach(o => o.remove()); // 取り残されたUIを閉じる(戻るボタン等)
+  $$('.overlay, .drawer, .drawer-ov, .kmenu, .coach, .frow-ghost').forEach(o => o.remove()); // 取り残されたUIを閉じる(戻るボタン等)
   const hash = location.hash || '#/';
   const gm = hash.match(/^#\/genre\/([^/]+)$/);
   currentGenreId = gm ? gm[1] : null;
@@ -1626,15 +1634,14 @@ async function renderGenreEdit(id){
     </div>
 
     <div class="sethead">項目の定義 — 基本項目+自由追加</div>
-    <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。↑↓はフォームでの表示順の変更です。<br>「基本」バッジの項目はこのジャンルの基本項目のため固定です(追加した項目のみ✎編集・🗑削除できます)。</div>
+    <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。⠿を押しながら(または行を長押しして)ドラッグで表示順を変えられます。<br>「基本」バッジの項目はこのジャンルの基本項目のため固定です(追加した項目のみ✎編集・🗑削除できます)。</div>
     <div id="ge-fields">
       ${fields.map((f, i) => `
         <div class="frow" data-fid="${f.id}">
+          <span class="draghandle" data-drag aria-label="ドラッグで並べ替え">⠿</span>
           <span class="fn">${esc(f.name)}</span>
           <span class="badge">${FIELD_TYPES[f.type].label}${f.unit ? ' / ' + esc(f.unit) : ''}</span>
           ${f.id === homeFieldId ? '<span class="badge">ホーム</span>' : ''}${f.preset ? '<span class="badge preset">基本</span>' : ''}${f.required ? '<span class="badge">必須</span>' : ''}
-          <button class="rowbtn" data-up ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
-          <button class="rowbtn" data-down ${i === fields.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
           ${f.preset
             ? '<span class="rowbtn" style="opacity:.3" title="基本項目は固定です">🔒</span>'
             : '<button class="rowbtn" data-fedit aria-label="編集">✎</button><button class="rowbtn" data-fdel aria-label="項目を削除">🗑</button>'}
@@ -1696,23 +1703,88 @@ async function renderGenreEdit(id){
     const idx = fs.findIndex(f => f.id === fid);
     if (idx < 0) return;
 
-    if (e.target.closest('[data-up]') || e.target.closest('[data-down]')) {
-      const j = e.target.closest('[data-up]') ? idx - 1 : idx + 1;
-      if (j < 0 || j >= fs.length) return;
-      [fs[idx], fs[j]] = [fs[j], fs[idx]];
-      fs.forEach((f, i) => f.order = i);
-      fresh.fields = fs;
-      fresh.updatedAt = new Date().toISOString();
-      await db.put('genres', fresh);
-      renderGenreEdit(id);
-      return;
-    }
     if (e.target.closest('[data-fedit]')) { openFieldEditModal(g, fs[idx]); return; }
     if (e.target.closest('[data-fdel]')) { await deleteFieldFlow(fresh, fs[idx]); return; }
   });
 
+  // ドラッグ(⠿ハンドル or 行の長押し)で並べ替え
+  if (list) enableFieldDrag(list, async () => {
+    const orderIds = $$('#ge-fields .frow').map(r => r.dataset.fid);
+    const fresh = await db.get('genres', id);
+    fresh.fields.forEach(f => { f.order = orderIds.indexOf(f.id); });
+    fresh.updatedAt = new Date().toISOString();
+    await db.put('genres', fresh);
+    toast('並び順を変更しました');
+    renderGenreEdit(id);
+  });
+
   // ジャンル削除(件数表示 + ジャンル名の入力一致で解錠)
   $('#ge-delete').onclick = () => openGenreDeleteModal(g, recordCount);
+}
+
+/* 項目リストのドラッグ並べ替え(⠿は即ドラッグ、行は長押し350msで開始) */
+function enableFieldDrag(list, onDrop){
+  let drag = null;   // { row, ghost, dy }
+  let lpTimer = null, lpStart = null;
+
+  function startDrag(row, clientY){
+    cancelLp();
+    const r = row.getBoundingClientRect();
+    const ghost = row.cloneNode(true);
+    ghost.classList.add('frow-ghost');
+    ghost.style.left = r.left + 'px';
+    ghost.style.top = r.top + 'px';
+    ghost.style.width = r.width + 'px';
+    document.body.appendChild(ghost);
+    row.classList.add('drag-src');
+    drag = { row, ghost, dy: clientY - r.top };
+    if (navigator.vibrate) navigator.vibrate(12); // 持ち上げの触覚フィードバック
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  }
+  function onMove(e){
+    if (!drag) return;
+    e.preventDefault();
+    drag.ghost.style.top = (e.clientY - drag.dy) + 'px';
+    // ポインタ位置に応じて元行を差し替え(空いた場所に他の行が詰まる)
+    const rows = [...list.querySelectorAll('.frow:not(.drag-src)')];
+    let target = null;
+    for (const r of rows) {
+      const b = r.getBoundingClientRect();
+      if (e.clientY < b.top + b.height / 2) { target = r; break; }
+    }
+    if (target) { if (target.previousElementSibling !== drag.row) list.insertBefore(drag.row, target); }
+    else if (list.lastElementChild !== drag.row) list.appendChild(drag.row);
+  }
+  function onUp(){
+    if (!drag) return;
+    drag.ghost.remove();
+    drag.row.classList.remove('drag-src');
+    drag = null;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    onDrop();
+  }
+  function cancelLp(){ if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } lpStart = null; }
+
+  list.addEventListener('pointerdown', e => {
+    const row = e.target.closest('.frow');
+    if (!row || drag) return;
+    if (e.target.closest('[data-fedit], [data-fdel]')) return;
+    if (e.target.closest('[data-drag]')) { e.preventDefault(); startDrag(row, e.clientY); return; }
+    // 行の長押し(350ms)。その間に動いたら通常スクロール扱い
+    lpStart = { x: e.clientX, y: e.clientY };
+    lpTimer = setTimeout(() => startDrag(row, lpStart.y), 350);
+  });
+  list.addEventListener('pointermove', e => {
+    if (!drag && lpTimer && lpStart && Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > 10) cancelLp();
+  });
+  list.addEventListener('pointerup', cancelLp);
+  list.addEventListener('pointercancel', cancelLp);
+  // ドラッグ中はタッチスクロールを止める
+  list.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
 }
 
 /* 項目に値が入っている記録の件数 */
