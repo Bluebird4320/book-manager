@@ -585,7 +585,7 @@ const db = {
   }
 };
 
-const APP_BUILD = '2026-07-11.3'; // 設定画面に表示(デプロイ反映の確認用)
+const APP_BUILD = '2026-07-11.4'; // 設定画面に表示(デプロイ反映の確認用)
 
 /* ---------- アプリ設定(metaストアに保存 / iOS風設定画面) ---------- */
 let appSettings = { theme: 'auto', weekStart: 'mon', chartType: 'auto' };
@@ -758,6 +758,7 @@ let currentGenreId = null; // FABの記録先プリセレクト用
 async function route(){
   if (typeof destroyCharts === 'function') destroyCharts(); // 画面遷移時にグラフを破棄
   $$('.overlay, .drawer, .drawer-ov, .kmenu, .coach, .frow-ghost').forEach(o => o.remove()); // 取り残されたUIを閉じる(戻るボタン等)
+  clearTimeout(tourTimer); // 前ページ用に予約済みのツアーを取り消す
   const hash = location.hash || '#/';
   const gm = hash.match(/^#\/genre\/([^/]+)$/);
   currentGenreId = gm ? gm[1] : null;
@@ -2715,15 +2716,21 @@ const SETTINGS_TOUR = [
 ];
 
 /* 各ページを初めて開いたときに1回だけツアーを表示 */
+let tourTimer = null; // 遷移時に取り消せるよう保持(古いページのツアーが後から出るのを防ぐ)
 async function maybeTour(key, steps){
   if (!(await db.getMeta('tutorialDone'))) return; // 最初はスライド説明が先
   if (await db.getMeta(key)) return;
-  setTimeout(() => startCoachTour(steps, key), 400);
+  clearTimeout(tourTimer);
+  const hashAtSchedule = location.hash || '#/';
+  tourTimer = setTimeout(() => {
+    if ((location.hash || '#/') !== hashAtSchedule) return; // 既に別ページへ移動していたら出さない(未読のまま次回へ)
+    startCoachTour(steps, key);
+  }, 400);
 }
 
 function startCoachTour(steps, doneKey){
   steps = steps.filter(s => document.querySelector(s.sel));
-  if (!steps.length) { if (doneKey) db.setMeta(doneKey, true); return; }
+  if (!steps.length) return; // 対象が画面に無い→ 既読にせず次回開いたときに表示する
   $$('.coach').forEach(c => c.remove());
   const ov = document.createElement('div');
   ov.className = 'coach';
@@ -2806,10 +2813,10 @@ function showTutorial(isReplay){
   async function finish(){
     ov.remove();
     await db.setMeta('tutorialDone', true);
-    // スキップでも「はじめる」でも、実画面ツアーを開始する
-    if (location.hash === '#/' || location.hash === '' || location.hash === '#') {
-      setTimeout(() => startCoachTour(DASH_TOUR, 'tour_dash'), 300);
-    }
+    // 「使い方」からの再生時は各ページのツアーを未読に戻す(もう一度見られるように)
+    if (isReplay) for (const k of ['tour_dash', 'tour_genre', 'tour_edit', 'tour_settings']) await db.setMeta(k, false);
+    // スキップでも「はじめる」でも、今いるページを描き直してそのページのツアーを開始する
+    route();
   }
   $('#tut-next', ov).onclick = () => {
     if (idx < TUT_SLIDES.length - 1) slides.scrollTo({ left: (idx + 1) * slides.clientWidth, behavior: 'smooth' });
