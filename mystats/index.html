@@ -254,12 +254,13 @@
   .frow .rowbtn{border:none;background:none;color:var(--ink-soft);font-size:14px;cursor:pointer;padding:4px 5px;}
   .frow{user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;}
   .draghandle{cursor:grab; touch-action:none; color:var(--ink-soft); font-size:15px; padding:4px 8px 4px 2px; letter-spacing:-2px; flex:none;}
-  .frow.drag-src{opacity:.3;}
+  .drag-src{opacity:.3;}
   .frow-ghost{
     position:fixed; z-index:120; pointer-events:none; margin:0;
     box-shadow:0 14px 34px rgba(34,48,46,.32); transform:scale(1.03); opacity:.97;
-    background:var(--card);
+    background:var(--card); border-radius:10px;
   }
+  .frow-ghost .swipe-del{display:none;}
   .frow .rowbtn:disabled{opacity:.25; cursor:default;}
   .badge{font-size:10.5px; padding:2px 8px; border-radius:999px; background:var(--paper); border:1px solid var(--line); color:var(--ink-soft); white-space:nowrap;}
   .sethead{font-size:12px; font-weight:700; color:var(--ink-soft); letter-spacing:.1em; margin:18px 4px 8px;}
@@ -368,11 +369,11 @@
   /* ── モーション(スタイリッシュ演出) ── */
   @keyframes fadeup{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
   #view > *{animation:fadeup .3s ease-out both;}
-  #genre-grid .card{animation:fadeup .38s ease-out both;}
-  #genre-grid .card:nth-child(2){animation-delay:.06s}
-  #genre-grid .card:nth-child(3){animation-delay:.12s}
-  #genre-grid .card:nth-child(4){animation-delay:.18s}
-  #genre-grid .card:nth-child(5){animation-delay:.24s}
+  #genre-grid .card{animation:fadeup .38s ease-out backwards;} /* both だと終了後もtransformが固定されスワイプを妨げる */
+  #genre-grid > :nth-child(2) .card{animation-delay:.06s}
+  #genre-grid > :nth-child(3) .card{animation-delay:.12s}
+  #genre-grid > :nth-child(4) .card{animation-delay:.18s}
+  #genre-grid > :nth-child(5) .card{animation-delay:.24s}
   @keyframes ovfade{from{opacity:0}to{opacity:1}}
   .overlay{animation:ovfade .2s ease-out;}
   @keyframes sheetup{from{transform:translateY(44px); opacity:.5}to{transform:none; opacity:1}}
@@ -402,6 +403,17 @@
   .celebrate p{font-size:13px; color:var(--ink-soft); margin-bottom:18px; line-height:1.8;}
   .celebrate .confetti{position:absolute; top:-10px; font-size:22px; animation:cfall 1.6s linear infinite;}
   @keyframes cfall{from{transform:translateY(-40px) rotate(0)} to{transform:translateY(110vh) rotate(360deg)}}
+
+  /* ── 左スワイプで削除 ── */
+  .swipe-wrap{position:relative; margin-bottom:12px;}
+  .swipe-wrap > .card, .swipe-wrap > .rec, .swipe-wrap > .frow{margin-bottom:0; position:relative;}
+  #record-list .swipe-wrap, #ge-fields .swipe-wrap{margin-bottom:8px;}
+  .swipe-del{
+    position:absolute; top:0; bottom:0; right:0; width:92px; border:none;
+    background:var(--danger); color:#fff; border-radius:12px;
+    font-size:12px; font-weight:700; cursor:pointer; line-height:1.6;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
 
   .toast{
     position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
@@ -785,7 +797,20 @@ async function renderDashboard(){
   wireBackupBanner();
 
   const grid = $('#genre-grid');
-  for (const g of genres) grid.appendChild(await genreCardEl(g));
+  for (const g of genres) {
+    const wrap = document.createElement('div');
+    wrap.className = 'swipe-wrap';
+    wrap.dataset.gid = g.id;
+    wrap.innerHTML = '<button class="swipe-del">🗑<br>削除</button>';
+    wrap.appendChild(await genreCardEl(g));
+    grid.appendChild(wrap);
+  }
+  // 左スワイプ → 削除(ジャンル名入力の確認フローへ)
+  enableSwipeDelete(grid, '.card', async wrap => {
+    const g = await db.get('genres', wrap.dataset.gid);
+    if (!g) return;
+    openGenreDeleteModal(g, await db.countRecordsByGenre(g.id));
+  });
   const add = document.createElement('button');
   add.className = 'addgenre';
   add.textContent = '＋ ジャンルを追加(テンプレートから)';
@@ -1027,7 +1052,11 @@ function renderRecordList(g, records){
   const fields = (g.fields || []).slice().sort((a, b) => a.order - b.order);
   const shown = records.slice(0, recordListLimit);
   body.innerHTML = `
-    <div id="record-list">${shown.map(r => recordItemHTML(r, fields)).join('')}</div>
+    <div id="record-list">${shown.map(r => `
+      <div class="swipe-wrap" data-id="${r.id}">
+        <button class="swipe-del">🗑<br>削除</button>
+        ${recordItemHTML(r, fields)}
+      </div>`).join('')}</div>
     ${records.length > recordListLimit ? `<button class="addgenre" id="btn-more">もっと見る(残り ${fmtNum(records.length - recordListLimit)} 件)</button>` : ''}`;
 
   $('#record-list').addEventListener('click', async e => {
@@ -1047,6 +1076,16 @@ function renderRecordList(g, records){
   });
   const more = $('#btn-more');
   if (more) more.onclick = () => { recordListLimit += 100; renderGenre(g.id); };
+
+  // 左スワイプ → 削除(confirm確認つき)
+  enableSwipeDelete($('#record-list'), '.rec', async wrap => {
+    const rec = records.find(r => r.id === wrap.dataset.id);
+    if (!rec) return;
+    if (!confirm('この記録を削除しますか?')) return;
+    await db.delete('records', rec.id);
+    toast('削除しました');
+    renderGenre(g.id);
+  });
 }
 
 /* 記録1行: 日付ブロック + 主表示(テキスト項目 or 代表数値) + メタ */
@@ -1637,6 +1676,8 @@ async function renderGenreEdit(id){
     <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。⠿を押しながら(または行を長押しして)ドラッグで表示順を変えられます。<br>「基本」バッジの項目はこのジャンルの基本項目のため固定です(追加した項目のみ✎編集・🗑削除できます)。</div>
     <div id="ge-fields">
       ${fields.map((f, i) => `
+        <div class="swipe-wrap">
+        ${f.preset ? '' : '<button class="swipe-del">🗑<br>削除</button>'}
         <div class="frow" data-fid="${f.id}">
           <span class="draghandle" data-drag aria-label="ドラッグで並べ替え">⠿</span>
           <span class="fn">${esc(f.name)}</span>
@@ -1645,6 +1686,7 @@ async function renderGenreEdit(id){
           ${f.preset
             ? '<span class="rowbtn" style="opacity:.3" title="基本項目は固定です">🔒</span>'
             : '<button class="rowbtn" data-fedit aria-label="編集">✎</button><button class="rowbtn" data-fdel aria-label="項目を削除">🗑</button>'}
+        </div>
         </div>`).join('')}
     </div>
     <button class="addgenre" id="ge-add-field">＋ 項目を追加</button>
@@ -1707,6 +1749,14 @@ async function renderGenreEdit(id){
     if (e.target.closest('[data-fdel]')) { await deleteFieldFlow(fresh, fs[idx]); return; }
   });
 
+  // 左スワイプ → 削除(追加項目のみ。既存の影響件数confirmへ)
+  if (list) enableSwipeDelete(list, '.frow', async wrap => {
+    const fid = wrap.querySelector('.frow')?.dataset.fid;
+    const fresh = await db.get('genres', id);
+    const field = fresh.fields.find(x => x.id === fid);
+    if (field) await deleteFieldFlow(fresh, field);
+  });
+
   // ドラッグ(⠿ハンドル or 行の長押し)で並べ替え
   if (list) enableFieldDrag(list, async () => {
     const orderIds = $$('#ge-fields .frow').map(r => r.dataset.fid);
@@ -1722,12 +1772,75 @@ async function renderGenreEdit(id){
   $('#ge-delete').onclick = () => openGenreDeleteModal(g, recordCount);
 }
 
+/* 左スワイプで削除ボタンを表示する(iOS風)。onDeleteは既存の確認フローを呼ぶ */
+function enableSwipeDelete(container, itemSel, onDelete){
+  const OPEN = -96;
+  let sw = null;           // { wrap, item, startX, startY, base, active }
+  let suppressClick = false;
+
+  const setX = (wrap, x, animate = true) => {
+    const item = wrap.querySelector(itemSel);
+    if (!item) return;
+    item.style.transition = animate ? 'transform .2s ease' : 'none';
+    item.style.transform = x ? `translateX(${x}px)` : '';
+    wrap.classList.toggle('open', x !== 0);
+  };
+  const closeAll = except => $$('.swipe-wrap.open', container).forEach(w => { if (w !== except) setX(w, 0); });
+
+  container.addEventListener('pointerdown', e => {
+    const item = e.target.closest(itemSel);
+    const wrap = e.target.closest('.swipe-wrap');
+    if (!item || !wrap || e.target.closest('[data-drag]') || e.target.closest('.swipe-del')) return;
+    if (!wrap.querySelector('.swipe-del')) return; // 削除できない行は対象外
+    sw = { wrap, item, startX: e.clientX, startY: e.clientY, base: wrap.classList.contains('open') ? OPEN : 0, active: false };
+  });
+  container.addEventListener('pointermove', e => {
+    if (!sw) return;
+    if (document.querySelector('.frow-ghost')) { sw = null; return; } // ドラッグ並べ替え中は無効
+    const dx = e.clientX - sw.startX, dy = e.clientY - sw.startY;
+    if (!sw.active) {
+      if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } // 縦=スクロール
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) { sw.active = true; closeAll(sw.wrap); }
+      else return;
+    }
+    setX(sw.wrap, Math.min(0, Math.max(-120, sw.base + dx)), false);
+  });
+  const finish = e => {
+    if (!sw) return;
+    if (sw.active) {
+      const dx = e.clientX - sw.startX;
+      const x = sw.base + dx;
+      setX(sw.wrap, x < OPEN / 2 ? OPEN : 0);
+      suppressClick = true;
+    } else if (sw.base === OPEN) {
+      setX(sw.wrap, 0); // 開いた状態で行をタップ → 閉じるだけ
+      suppressClick = true;
+    }
+    sw = null;
+  };
+  container.addEventListener('pointerup', finish);
+  container.addEventListener('pointercancel', finish);
+  container.addEventListener('touchmove', e => { if (sw && sw.active) e.preventDefault(); }, { passive: false });
+  // スワイプ直後のタップ誤爆(カード遷移・編集モーダル)を抑止
+  container.addEventListener('click', e => {
+    if (suppressClick) { e.stopPropagation(); e.preventDefault(); suppressClick = false; return; }
+    const del = e.target.closest('.swipe-del');
+    if (del) {
+      e.stopPropagation();
+      const wrap = del.closest('.swipe-wrap');
+      setX(wrap, 0);
+      onDelete(wrap);
+    }
+  }, true);
+}
+
 /* 項目リストのドラッグ並べ替え(⠿は即ドラッグ、行は長押し350msで開始) */
 function enableFieldDrag(list, onDrop){
   let drag = null;   // { row, ghost, dy }
   let lpTimer = null, lpStart = null;
 
   function startDrag(row, clientY){
+    row = row.closest('.swipe-wrap') || row; // スワイプラッパーごと動かす
     cancelLp();
     const r = row.getBoundingClientRect();
     const ghost = row.cloneNode(true);
@@ -1748,7 +1861,7 @@ function enableFieldDrag(list, onDrop){
     e.preventDefault();
     drag.ghost.style.top = (e.clientY - drag.dy) + 'px';
     // ポインタ位置に応じて元行を差し替え(空いた場所に他の行が詰まる)
-    const rows = [...list.querySelectorAll('.frow:not(.drag-src)')];
+    const rows = [...list.children].filter(el => el !== drag.row);
     let target = null;
     for (const r of rows) {
       const b = r.getBoundingClientRect();
