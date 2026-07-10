@@ -585,7 +585,7 @@ const db = {
   }
 };
 
-const APP_BUILD = '2026-07-11.1'; // 設定画面に表示(デプロイ反映の確認用)
+const APP_BUILD = '2026-07-11.2'; // 設定画面に表示(デプロイ反映の確認用)
 
 /* ---------- アプリ設定(metaストアに保存 / iOS風設定画面) ---------- */
 let appSettings = { theme: 'auto', weekStart: 'mon', chartType: 'auto' };
@@ -2472,7 +2472,7 @@ function showLockScreen(lock){
       if (fails >= 5) { lockedUntil = Date.now() + 30000; msg.textContent = '試行回数が多すぎます。30秒待ってからお試しください'; }
       else msg.textContent = 'パスコードが違います';
     }
-    async function tryBio(){
+    async function tryBio(manual){
       try {
         await navigator.credentials.get({ publicKey: {
           challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -2480,7 +2480,10 @@ function showLockScreen(lock){
           userVerification: 'required', timeout: 60000,
         }});
         unlock();
-      } catch (e) { msg.textContent = '生体認証に失敗しました。パスコードを入力してください'; }
+      } catch (e) {
+        // 起動時の自動試行はブラウザ仕様で失敗することがあるため、手動時のみ案内
+        if (manual) msg.textContent = '生体認証に失敗しました。パスコードを入力してください';
+      }
     }
     ov.addEventListener('click', e => {
       const b = e.target.closest('button');
@@ -2490,9 +2493,9 @@ function showLockScreen(lock){
       if (b.dataset.n !== undefined) {
         if (pin.length < 4) { pin += b.dataset.n; paint(); if (pin.length === 4) tryPin(); }
       } else if (b.hasAttribute('data-del')) { pin = pin.slice(0, -1); paint(); }
-      else if (b.hasAttribute('data-bio') && lock.webauthn) tryBio();
+      else if (b.hasAttribute('data-bio') && lock.webauthn) tryBio(true);
     });
-    if (lock.webauthn) tryBio(); // 起動時にまず生体認証を試す
+    if (lock.webauthn) tryBio(false); // 起動時にまず生体認証を試す(失敗時は静かにパスコードへ)
   });
 }
 
@@ -2522,9 +2525,34 @@ function openPinSetup(existing){
     await db.setMeta('lock', lock);
     m.close();
     toast(existing ? 'パスコードを変更しました' : 'パスコードを設定しました');
-    if (!existing && await biometricAvailable() && confirm('Face ID / 指紋でも解除できるようにしますか?')) {
-      try { await registerBio(lock); toast('生体認証を登録しました'); }
-      catch (e) { toast('生体認証の登録をキャンセルしました'); }
+    if (!existing && await biometricAvailable()) { offerBioSheet(lock); return; }
+    renderSettings();
+  };
+}
+
+/* Face ID / 指紋の登録シート。
+   iOS SafariはWebAuthn登録に「ボタンタップ直後」の呼び出しを要求するため、
+   confirm()ではなくボタンから直接 registerBio を呼ぶ */
+function offerBioSheet(lock){
+  const m = openModal(`
+    <h3>👤 Face ID / 指紋も使いますか?</h3>
+    <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px">
+      パスコードの代わりに、Face IDや指紋でかんたんに解除できるようになります。<br>
+      認証はすべて端末の中で行われ、外部には送信されません。
+    </p>
+    <div class="btnrow">
+      <button class="btn ghost" id="bio-later">あとで</button>
+      <button class="btn primary" id="bio-reg">登録する</button>
+    </div>`);
+  $('#bio-later', m.el).onclick = () => { m.close(); renderSettings(); };
+  $('#bio-reg', m.el).onclick = async () => {
+    try {
+      await registerBio(lock);
+      m.close();
+      toast('生体認証を登録しました');
+    } catch (e) {
+      m.close();
+      alert('生体認証を登録できませんでした。\nパスコードでの解除は利用できます。\n(' + ((e && e.name) || '') + ' ' + ((e && e.message) || e) + ')');
     }
     renderSettings();
   };
@@ -2538,7 +2566,9 @@ async function openLockSettings(){
   const m = openModal(`
     <h3>🔒 パスコード & Face ID</h3>
     <div class="setrow" id="lk-change"><span>パスコードを変更</span><span class="arr">›</span></div>
-    ${(bioAvail || lock.webauthn) ? `<div class="setrow" id="lk-bio"><span>Face ID / 指紋で解除</span><span class="valtxt">${lock.webauthn ? 'オン' : 'オフ'}</span><span class="arr">›</span></div>` : ''}
+    ${(bioAvail || lock.webauthn)
+      ? `<div class="setrow" id="lk-bio"><span>Face ID / 指紋で解除</span><span class="valtxt">${lock.webauthn ? 'オン' : 'オフ'}</span><span class="arr">›</span></div>`
+      : `<div class="hint" style="margin:2px 8px 8px">この端末・ブラウザでは生体認証(Face ID/指紋)を利用できません。</div>`}
     <div class="setrow warn" id="lk-off"><span>ロックをオフにする</span><span class="arr">›</span></div>`);
   $('#lk-change', m.el).onclick = () => { m.close(); verifyPinThen(lock, () => openPinSetup(lock)); };
   const bio = $('#lk-bio', m.el);
@@ -2550,7 +2580,7 @@ async function openLockSettings(){
       toast('生体認証をオフにしました');
     } else {
       try { await registerBio(lock); toast('生体認証を登録しました'); }
-      catch (e) { toast('生体認証を登録できませんでした'); }
+      catch (e) { alert('生体認証を登録できませんでした。\n(' + ((e && e.name) || '') + ' ' + ((e && e.message) || e) + ')'); }
     }
     renderSettings();
   };
