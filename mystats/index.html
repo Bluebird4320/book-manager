@@ -355,10 +355,14 @@
   .coach-hole::after{content:""; position:absolute; inset:-6px; border:2px solid var(--paper); border-radius:inherit; animation:coachpulse 1.6s ease-out infinite;}
   @keyframes coachpulse{0%{transform:scale(1); opacity:.95}70%{transform:scale(1.13); opacity:0}100%{opacity:0}}
   .coach-tip{
-    position:absolute; left:22px; right:22px; color:#F5F7F3; font-size:15px; font-weight:700; line-height:1.9;
-    text-shadow:0 1px 8px rgba(0,0,0,.45); transition:top .45s cubic-bezier(.3,.85,.3,1);
+    position:absolute; left:16px; right:16px;
+    background:var(--paper); color:var(--ink);
+    border-radius:16px; padding:16px 18px;
+    font-size:17px; font-weight:700; line-height:1.85;
+    box-shadow:0 14px 44px rgba(0,0,0,.4);
+    transition:top .45s cubic-bezier(.3,.85,.3,1);
   }
-  .coach-tip .n{display:block; font-size:11px; letter-spacing:.18em; opacity:.85; margin-bottom:4px; font-family:ui-monospace,Menlo,monospace;}
+  .coach-tip .n{display:block; font-size:11px; letter-spacing:.18em; color:var(--ink-soft); margin-bottom:6px; font-family:ui-monospace,Menlo,monospace;}
   .coach-foot{
     position:absolute; bottom:calc(26px + env(safe-area-inset-bottom)); left:0; right:0;
     display:flex; justify-content:space-between; align-items:center; padding:0 26px;
@@ -816,6 +820,8 @@ async function renderDashboard(){
   add.textContent = '＋ ジャンルを追加(テンプレートから)';
   add.onclick = () => openGenreCreateModal();
   grid.appendChild(add);
+
+  maybeTour('tour_dash', DASH_TOUR); // 初めて開いたときだけ操作ツアー
 }
 
 /* ジャンルカード: 代表項目(先頭の数値項目)の今月合計 + 30日スパークライン */
@@ -1036,10 +1042,7 @@ async function renderGenre(id){
   if (genreTab === 'records') renderRecordList(g, records);
   else renderStats(g, records);
 
-  // 初回のみジャンル画面の操作ツアー(チュートリアルをスキップした人には出さない)
-  if (await db.getMeta('tutorialDone') && !(await db.getMeta('coachGenreDone'))) {
-    setTimeout(() => startCoachTour(GENRE_TOUR, 'coachGenreDone'), 400);
-  }
+  maybeTour('tour_genre', GENRE_TOUR); // 初めて開いたときだけ操作ツアー
 }
 
 /* ---- 記録一覧タブ ---- */
@@ -1770,6 +1773,8 @@ async function renderGenreEdit(id){
 
   // ジャンル削除(件数表示 + ジャンル名の入力一致で解錠)
   $('#ge-delete').onclick = () => openGenreDeleteModal(g, recordCount);
+
+  maybeTour('tour_edit', EDIT_TOUR); // 初めて開いたときだけ操作ツアー
 }
 
 /* 左スワイプで削除ボタンを表示する(iOS風)。onDeleteは既存の確認フローを呼ぶ */
@@ -2270,6 +2275,8 @@ async function renderSettings(){
   });
   $('#set-lock').onclick = () => openLockSettings();
   $('#set-tutorial').onclick = () => showTutorial(true);
+
+  maybeTour('tour_settings', SETTINGS_TOUR); // 初めて開いたときだけ操作ツアー
 }
 
 /* 選択シート(iOS風: 現在値に✓) */
@@ -2648,16 +2655,37 @@ function openKebab(anchor, items){
 const DASH_TOUR = [
   { sel: '#fab', text: '「＋ 記録」— 毎日の記録はここから。10秒で完了します。', round: true },
   { sel: '#genre-grid .addgenre', text: '「ジャンルを追加」— 読書・運動などテンプレートから記録のテーマを作れます。' },
-  { sel: '#genre-grid .card', text: 'ジャンルカード — 今月の集計が一目でわかります。タップすると統計と記録一覧へ。' },
+  { sel: '#genre-grid .card', text: 'ジャンルカード — 今月の集計と累計が一目でわかります。タップで統計へ。左にスワイプすると削除できます。' },
   { sel: '.streak', text: '連続記録 — 毎日つけると🔥の数字が伸びていきます。' },
   { sel: '#menu-btn', text: 'メニュー — ジャンル一覧・設定・バックアップ・使い方はここから。', round: true },
 ];
 const GENRE_TOUR = [
-  { sel: '#tab-stats', text: '「統計」タブ — 合計・平均・グラフで振り返れます。期間も切り替えられます。' },
-  { sel: '#tab-records', text: '「記録一覧」タブ — 過去の記録の確認・編集・削除・シェアができます。' },
-  { sel: '#btn-kebab', text: 'ジャンルメニュー — 項目の編集(単位や型)、シェア、CSV出力はここから。', round: true },
+  { sel: '#tab-stats', text: '「統計」タブ — 合計・平均・グラフで振り返れます。' },
+  { sel: '#tab-records', text: '「記録一覧」タブ — 過去の記録の確認・編集ができます。行を左にスワイプすると削除できます。' },
+  { sel: '.chips', text: '期間の切り替え — 今週・今月・今年・任意期間で集計できます。' },
+  { sel: '#st-share', text: 'シェア — 統計をきれいな画像にしてX・Instagram・TikTokに投稿できます。' },
+  { sel: '#btn-kebab', text: 'ジャンルメニュー — 項目の編集、シェア、CSV出力、削除はここから。', round: true },
   { sel: '#fab', text: 'このジャンルへの記録もここから。まずは1件つけてみましょう。', round: true },
 ];
+const EDIT_TOUR = [
+  { sel: '#ge-rep', text: '「ホームに表示する項目」— ホームのカードに大きく表示する集計をここで選べます。' },
+  { sel: '#ge-fields', text: '項目の定義 — ⠿を押すか行を長押しするとドラッグで並べ替え。追加した項目は左スワイプで削除できます(「基本」は固定)。' },
+  { sel: '#ge-add-field', text: '「＋ 項目を追加」— 数値・チェック・★評価など、自分だけの記録項目を作れます。' },
+  { sel: '#ge-delete', text: 'ジャンルの削除はここから。まちがい防止のためジャンル名の入力が必要です。' },
+];
+const SETTINGS_TOUR = [
+  { sel: '#st-export', text: 'JSONエクスポート — 全データのバックアップはここから。ときどき保存しておくと安心です。' },
+  { sel: '#st-import', text: 'JSONインポート — バックアップからの復元や、機種変更時の引っ越しに使います。' },
+  { sel: '#set-lock', text: 'パスコード & Face ID — アプリにロックをかけて記録を守れます。' },
+  { sel: '#set-tutorial', text: '「使い方」— スライド説明とこの機能ツアーは、いつでもここから見直せます。' },
+];
+
+/* 各ページを初めて開いたときに1回だけツアーを表示 */
+async function maybeTour(key, steps){
+  if (!(await db.getMeta('tutorialDone'))) return; // 最初はスライド説明が先
+  if (await db.getMeta(key)) return;
+  setTimeout(() => startCoachTour(steps, key), 400);
+}
 
 function startCoachTour(steps, doneKey){
   steps = steps.filter(s => document.querySelector(s.sel));
@@ -2689,7 +2717,7 @@ function startCoachTour(steps, doneKey){
     $('.n', tip).textContent = `${i + 1} / ${steps.length}`;
     $('.t', tip).textContent = steps[i].text;
     const spaceBelow = window.innerHeight - r.bottom;
-    tip.style.top = (spaceBelow > 160 ? r.bottom + pad + 22 : Math.max(20, r.top - pad - 130)) + 'px';
+    tip.style.top = (spaceBelow > 220 ? r.bottom + pad + 24 : Math.max(16, r.top - pad - 190)) + 'px';
     $('#coach-next', ov).textContent = i === steps.length - 1 ? 'おわり' : 'つぎへ';
   }
   function finish(){ ov.remove(); if (doneKey) db.setMeta(doneKey, true); }
@@ -2741,24 +2769,19 @@ function showTutorial(isReplay){
     const i = Math.round(slides.scrollLeft / slides.clientWidth);
     if (i !== idx && i >= 0 && i < TUT_SLIDES.length) setIdx(i);
   }, { passive: true });
-  async function finish(viaStart){
+  async function finish(){
     ov.remove();
     await db.setMeta('tutorialDone', true);
-    if (!viaStart && !isReplay) {
-      // 初回にスキップした人には操作ツアーも出さない(見たい時は「使い方」から)
-      await db.setMeta('coachDashDone', true);
-      await db.setMeta('coachGenreDone', true);
-      return;
-    }
-    if (viaStart && (location.hash === '#/' || location.hash === '' || location.hash === '#')) {
-      setTimeout(() => startCoachTour(DASH_TOUR, 'coachDashDone'), 300); // スライドの後は実画面ツアー
+    // スキップでも「はじめる」でも、実画面ツアーを開始する
+    if (location.hash === '#/' || location.hash === '' || location.hash === '#') {
+      setTimeout(() => startCoachTour(DASH_TOUR, 'tour_dash'), 300);
     }
   }
   $('#tut-next', ov).onclick = () => {
     if (idx < TUT_SLIDES.length - 1) slides.scrollTo({ left: (idx + 1) * slides.clientWidth, behavior: 'smooth' });
-    else finish(true);
+    else finish();
   };
-  $('#tut-skip', ov).onclick = () => finish(false);
+  $('#tut-skip', ov).onclick = () => finish();
 }
 
 /* =====================================================
@@ -2843,11 +2866,6 @@ window.mystatsDev = {
   await db.init();
   await migratePresetLock(); // 基本項目をテンプレート定義に復元(初回のみ)
   await loadSettings();
-  // ツアーは初回起動時のみ: 2回目以降の起動では自動表示しない(「使い方」から再生は可能)
-  if (await db.getMeta('tutorialDone')) {
-    if (!(await db.getMeta('coachDashDone'))) await db.setMeta('coachDashDone', true);
-    if (!(await db.getMeta('coachGenreDone'))) await db.setMeta('coachGenreDone', true);
-  }
   await requireUnlockIfNeeded(); // ロック有効時は解除まで進まない
   // FAB「＋ 記録」: ジャンル未作成なら作成へ、あれば記録シート(ジャンル切替チップ付き)
   $('#fab').onclick = async () => {
