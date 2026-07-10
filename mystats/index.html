@@ -585,7 +585,7 @@ const db = {
   }
 };
 
-const APP_BUILD = '2026-07-11.2'; // 設定画面に表示(デプロイ反映の確認用)
+const APP_BUILD = '2026-07-11.3'; // 設定画面に表示(デプロイ反映の確認用)
 
 /* ---------- アプリ設定(metaストアに保存 / iOS風設定画面) ---------- */
 let appSettings = { theme: 'auto', weekStart: 'mon', chartType: 'auto' };
@@ -792,6 +792,7 @@ async function renderDashboard(){
       </div>`;
     view.innerHTML = html;
     $('#btn-first-genre').onclick = () => openGenreCreateModal();
+    maybeTour('tour_dash', DASH_TOUR); // ジャンル未作成の初回もツアーを表示
     return;
   }
 
@@ -2685,6 +2686,7 @@ function openKebab(anchor, items){
  *  画面を暗くして実際のボタンをハイライトし、説明をモーション付きで表示
  * ===================================================== */
 const DASH_TOUR = [
+  { sel: '#btn-first-genre', text: '「＋ 最初のジャンルを作成」— まずはここから。読書・運動などのテンプレートを選ぶだけで記録を始められます。' },
   { sel: '#fab', text: '「＋ 記録」— 毎日の記録はここから。10秒で完了します。', round: true },
   { sel: '#genre-grid .addgenre', text: '「ジャンルを追加」— 読書・運動などテンプレートから記録のテーマを作れます。' },
   { sel: '#genre-grid .card', text: 'ジャンルカード — 今月の集計と累計が一目でわかります。タップで統計へ。左にスワイプすると削除できます。' },
