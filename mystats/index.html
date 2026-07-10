@@ -1296,14 +1296,14 @@ function fieldInputHTML(f, value){
   const v = value === undefined || value === null ? '' : value;
   switch (f.type) {
     case 'number':
-      return `<div class="withunit"><input type="number" step="any" inputmode="decimal" data-fid="${f.id}" value="${esc(v)}"><span class="unit">${esc(f.unit || '')}</span></div>`;
+      return `<div class="withunit"><input type="number" step="any" inputmode="decimal" data-fid="${f.id}" value="${esc(v)}" placeholder="数字で入力"><span class="unit">${esc(f.unit || '')}</span></div>`;
     case 'text':
-      return `<input type="text" data-fid="${f.id}" value="${esc(v)}">`;
+      return `<input type="text" data-fid="${f.id}" value="${esc(v)}" placeholder="${esc(f.name)}を入力">`;
     case 'date':
       return `<input type="date" data-fid="${f.id}" value="${esc(v)}">`;
     case 'select':
       return `<select data-fid="${f.id}">
-        <option value="">—</option>
+        <option value="">選択してください</option>
         ${(f.options || []).map(o => `<option value="${esc(o)}" ${String(v) === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
       </select>`;
     case 'check':
@@ -1362,7 +1362,7 @@ function openRecordModal(genre, record = null, opts = {}){
       <div class="field" data-group="${f.id}">
         <label>${esc(f.name)}${f.required ? '<span class="req">*</span>' : ''}</label>
         ${fieldInputHTML(f, record ? record.values?.[f.id] : undefined)}
-        <div class="error-msg" style="display:none">入力してください</div>
+        <div class="error-msg" style="display:none">「${esc(f.name)}」を${f.type === 'select' ? '選択' : f.type === 'rating' ? 'タップして選択' : '入力'}してください</div>
       </div>`).join('')}
     <div class="field"><label>メモ(任意)</label><textarea id="rec-memo" rows="2">${esc(record ? record.memo || '' : (opts.memo || ''))}</textarea></div>
     <div class="btnrow">
