@@ -140,7 +140,22 @@
 
   /* ── sub pages ── */
   .pagehead{display:flex; align-items:center; gap:8px; padding:14px 4px 10px;}
-  .back{border:none;background:none;font-size:20px;cursor:pointer;color:var(--ink);padding:4px 8px 4px 0;}
+  .back{
+    display:inline-flex; align-items:center; gap:3px; flex:none;
+    border:1.5px solid var(--line); background:var(--card); color:var(--ink);
+    font-size:13px; font-weight:700; letter-spacing:.06em;
+    padding:6px 13px 6px 9px; border-radius:999px; cursor:pointer; box-shadow:var(--shadow);
+  }
+  .back .chev{font-size:17px; line-height:1; font-weight:800; color:var(--gcolor,var(--ink));}
+  .back:active{transform:scale(.94);}
+  .pagehead h2{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+  /* パスコード設定の入力欄(大きく・中央寄せ・等幅) */
+  .pin-input{
+    font:800 30px/1 ui-monospace,'SF Mono',Menlo,monospace!important;
+    text-align:center; letter-spacing:16px; text-indent:16px;
+    padding:14px 8px!important; border-width:2px!important; border-radius:12px!important;
+  }
+  .pin-input::placeholder{color:var(--line); letter-spacing:16px;}
   .pagehead h2{font-size:17px; font-weight:800;}
   .pagehead .spacer{flex:1;}
 
@@ -213,7 +228,7 @@
   .field{margin-bottom:14px;}
   .field label{display:block; font-size:12px; font-weight:700; color:var(--ink-soft); margin-bottom:5px; letter-spacing:.05em;}
   .field label .req{color:var(--danger); margin-left:3px;}
-  .field input[type=text],.field input[type=number],.field input[type=date],.field select,.field textarea{
+  .field input[type=text],.field input[type=number],.field input[type=date],.field input[type=password],.field select,.field textarea{
     width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px;
     font-size:16px; background:var(--card); color:var(--ink); font-family:inherit;
   }
@@ -591,7 +606,7 @@ const db = {
   }
 };
 
-const APP_BUILD = '2026-07-11.5'; // 設定画面に表示(デプロイ反映の確認用)
+const APP_BUILD = '2026-07-12.1'; // 設定画面に表示(デプロイ反映の確認用)
 
 /* ---------- アプリ設定(metaストアに保存 / iOS風設定画面) ---------- */
 let appSettings = { theme: 'auto', weekStart: 'mon', chartType: 'auto' };
@@ -1097,7 +1112,7 @@ async function renderGenre(id){
 
   $('#view').innerHTML = `
     <div class="pagehead" style="--gcolor:${esc(g.color)}">
-      <button class="back" id="btn-back" aria-label="戻る">‹</button>
+      <button class="back" id="btn-back" aria-label="前の画面に戻る"><span class="chev">‹</span>戻る</button>
       <h2>${esc(g.icon)} ${esc(g.name)}</h2><span class="spacer"></span>
       <button class="iconbtn" id="btn-kebab" aria-label="メニュー">⋮</button>
     </div>
@@ -1112,6 +1127,7 @@ async function renderGenre(id){
     e.stopPropagation();
     openKebab($('.pagehead'), [
       { icon: '✎', label: 'ジャンル設定(項目の編集)', run: () => location.hash = `#/genre/${g.id}/edit` },
+      { icon: '🎯', label: '目標を設定', run: () => openGoalEditModal(g, null) },
       { icon: '📤', label: '統計をシェア', run: () => shareStats(g, filterByPeriod(records, statsPeriod), (PERIODS.find(p => p.key === statsPeriod) || {}).label || '') },
       { icon: '⬇', label: 'CSVエクスポート', run: () => exportCSV(g.id) },
       { icon: '🗑', label: 'ジャンルを削除', warn: true, run: () => openGenreDeleteModal(g, records.length) },
@@ -1388,15 +1404,24 @@ function renderStats(g, records){
       <div class="chartbox" style="--gcolor:${esc(g.color)}">
         <h3>🎯 目標</h3>
         ${goalList.map(({ gl, p }) => goalBarHTML(gl, p)).join('')}
-        <div class="hint" style="margin:8px 4px 0">目標は「ジャンル設定 → 目標」で追加・変更できます。</div>
+        <div class="hint" style="margin:8px 4px 0">目標の追加・変更は「＋ 目標を設定」(⋮メニュー)またはジャンル設定から。</div>
+      </div>`;
+  } else {
+    html += `
+      <div class="chartbox" style="--gcolor:${esc(g.color)}">
+        <h3>🎯 目標</h3>
+        <div class="hint" style="margin:2px 4px 10px">「毎日10ページ」のように期間(日・週・月・年)と数値を決めると、ここに進み具合が表示されます。</div>
+        <button class="addgenre" id="st-goal-add" style="margin:0">＋ 目標を設定</button>
       </div>`;
   }
+  const wireGoalAdd = () => { const b = $('#st-goal-add'); if (b) b.onclick = () => openGoalEditModal(g, null); };
 
   if (!filtered.length) {
     html += `<div class="empty">この期間の記録はありません。<br>期間を変えるか、記録を追加してください。</div>`;
     body.innerHTML = html;
     wirePeriodChips(g, records);
     wireCustomRange(g, records);
+    wireGoalAdd();
     return;
   }
 
@@ -1479,6 +1504,7 @@ function renderStats(g, records){
   body.innerHTML = html;
   wirePeriodChips(g, records);
   wireCustomRange(g, records);
+  wireGoalAdd();
 
   const periodLabel = (PERIODS.find(p => p.key === statsPeriod) || {}).label || '';
   $('#st-share').onclick = () => shareStats(g, filtered, periodLabel);
@@ -1781,7 +1807,7 @@ async function renderGenreEdit(id){
 
   $('#view').innerHTML = `
     <div class="pagehead">
-      <button class="back" id="btn-back" aria-label="戻る">‹</button>
+      <button class="back" id="btn-back" aria-label="前の画面に戻る"><span class="chev">‹</span>戻る</button>
       <h2>ジャンル設定</h2>
     </div>
     <div class="field"><label>ジャンル名</label><input type="text" id="ge-name" value="${esc(g.name)}" maxlength="20"></div>
@@ -1797,6 +1823,21 @@ async function renderGenreEdit(id){
       </select>
       <div class="hint">ホーム画面のジャンルカードに大きく表示される集計です。単位は項目に設定したものが使われます。</div>
     </div>
+
+    <div class="sethead">🎯 目標 — 期間を決めてめざす数値</div>
+    <div class="hint" style="margin:-4px 4px 10px">「毎日10ページ」「毎月20km」のように期間(日・週・月・年)と数値を決めると、ホームと統計に進み具合が表示されます。</div>
+    <div id="ge-goals">
+      ${(g.goals || []).map(gl => {
+        const f = gl.fieldId === '__count__' ? null : (g.fields || []).find(x => x.id === gl.fieldId);
+        if (gl.fieldId !== '__count__' && !f) return '';
+        return `<div class="frow" data-goalid="${gl.id}">
+          <span class="fn">🎯 ${GOAL_PERIODS[gl.period]} ${fmtNum(gl.value)}${esc(f ? (f.unit || '') : '件')}</span>
+          <span class="badge">${esc(f ? f.name : '記録数')}</span>
+          <button class="rowbtn" data-gedit aria-label="編集">✎</button><button class="rowbtn" data-gdel aria-label="目標を削除">🗑</button>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="addgenre" id="ge-add-goal">＋ 目標を追加</button>
 
     <div class="sethead">項目の定義 — 基本項目+自由追加</div>
     <div class="hint" style="margin:-4px 4px 10px">項目は「＋ 記録」で入力するフォームの欄です。⠿を押しながら(または行を長押しして)ドラッグで表示順を変えられます。<br>「基本」バッジの項目はこのジャンルの基本項目のため固定です(追加した項目のみ✎編集・🗑削除できます)。</div>
@@ -1816,21 +1857,6 @@ async function renderGenreEdit(id){
         </div>`).join('')}
     </div>
     <button class="addgenre" id="ge-add-field">＋ 項目を追加</button>
-
-    <div class="sethead">目標 — 期間を決めてめざす数値</div>
-    <div class="hint" style="margin:-4px 4px 10px">「毎日10ページ」「毎月20km」のように期間(日・週・月・年)と数値を決めると、ホームと統計に進み具合が表示されます。</div>
-    <div id="ge-goals">
-      ${(g.goals || []).map(gl => {
-        const f = gl.fieldId === '__count__' ? null : (g.fields || []).find(x => x.id === gl.fieldId);
-        if (gl.fieldId !== '__count__' && !f) return '';
-        return `<div class="frow" data-goalid="${gl.id}">
-          <span class="fn">🎯 ${GOAL_PERIODS[gl.period]} ${fmtNum(gl.value)}${esc(f ? (f.unit || '') : '件')}</span>
-          <span class="badge">${esc(f ? f.name : '記録数')}</span>
-          <button class="rowbtn" data-gedit aria-label="編集">✎</button><button class="rowbtn" data-gdel aria-label="目標を削除">🗑</button>
-        </div>`;
-      }).join('')}
-    </div>
-    <button class="addgenre" id="ge-add-goal">＋ 目標を追加</button>
 
     <div class="sethead">危険な操作</div>
     <div class="setrow warn" id="ge-delete">このジャンルを削除する<span class="arr">›</span></div>`;
@@ -2224,7 +2250,7 @@ function openGoalEditModal(genre, goal){
     await db.put('genres', fresh);
     m.close();
     toast(isEdit ? '目標を更新しました' : '目標を設定しました');
-    renderGenreEdit(genre.id);
+    route(); // ジャンル画面・ジャンル設定のどちらから開いても今のページを更新
   };
 }
 
@@ -2438,7 +2464,7 @@ async function renderSettings(){
 
   $('#view').innerHTML = `
     <div class="pagehead">
-      <button class="back" id="btn-back" aria-label="戻る">‹</button>
+      <button class="back" id="btn-back" aria-label="前の画面に戻る"><span class="chev">‹</span>戻る</button>
       <h2>設定</h2>
     </div>
     ${memoryMode ? `<div class="banner error"><span>⚠</span><span class="b-main">メモリ動作モードです。ページを閉じるとデータは消えます。</span></div>` : ''}
@@ -2718,13 +2744,26 @@ function openPinSetup(existing){
       アプリを開くときに4桁のパスコードを求めます。<br>
       ※ パスコードを忘れると解除できません(全データ削除が必要になります)。必ず控えてください。
     </p>
-    <div class="field"><label>パスコード(数字4桁)</label><input type="password" id="pin1" inputmode="numeric" maxlength="4" autocomplete="off"></div>
-    <div class="field"><label>もう一度入力</label><input type="password" id="pin2" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+    <div class="field"><label>① 新しいパスコード — <b>数字4桁</b>を入力</label>
+      <input type="password" class="pin-input" id="pin1" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0000">
+      <div class="hint">枠をタップすると数字キーボードが開きます。</div></div>
+    <div class="field"><label>② 確認のため、もう一度同じ数字</label>
+      <input type="password" class="pin-input" id="pin2" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0000"></div>
     <div class="error-msg" id="pin-err" style="display:none"></div>
     <div class="btnrow">
       <button class="btn ghost" id="pin-cancel">キャンセル</button>
       <button class="btn primary" id="pin-save">設定する</button>
     </div>`);
+  // 数字のみ受け付け、4桁入力したら確認欄へ自動で移動
+  [$('#pin1', m.el), $('#pin2', m.el)].forEach(inp => {
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 4);
+      inp.classList.remove('field-error');
+      $('#pin-err', m.el).style.display = 'none';
+      if (inp.id === 'pin1' && inp.value.length === 4) $('#pin2', m.el).focus();
+    });
+  });
+  setTimeout(() => $('#pin1', m.el).focus(), 250);
   $('#pin-cancel', m.el).onclick = () => m.close();
   $('#pin-save', m.el).onclick = async () => {
     const p1 = $('#pin1', m.el).value, p2 = $('#pin2', m.el).value;
@@ -2908,14 +2947,14 @@ const GENRE_TOUR = [
   { sel: '#tab-records', text: '「記録一覧」タブ — 過去の記録の確認・編集ができます。行を左にスワイプすると削除できます。' },
   { sel: '.chips', text: '期間の切り替え — 今週・今月・今年・任意期間で集計できます。' },
   { sel: '#st-share', text: 'シェア — 統計をきれいな画像にしてX・Instagram・TikTokに投稿できます。' },
-  { sel: '#btn-kebab', text: 'ジャンルメニュー — 項目の編集、シェア、CSV出力、削除はここから。', round: true },
+  { sel: '#btn-kebab', text: 'ジャンルメニュー — 目標の設定、項目の編集、シェア、CSV出力、削除はここから。', round: true },
   { sel: '#fab', text: 'このジャンルへの記録もここから。まずは1件つけてみましょう。', round: true },
 ];
 const EDIT_TOUR = [
   { sel: '#ge-rep', text: '「ホームに表示する項目」— ホームのカードに大きく表示する集計をここで選べます。' },
+  { sel: '#ge-add-goal', text: '「＋ 目標を追加」— 「毎日10ページ」など期間(日・週・月・年)と数値を決めると、ホームと統計に進み具合が表示されます。' },
   { sel: '#ge-fields', text: '項目の定義 — ⠿を押すか行を長押しするとドラッグで並べ替え。追加した項目は左スワイプで削除できます(「基本」は固定)。' },
   { sel: '#ge-add-field', text: '「＋ 項目を追加」— 数値・チェック・★評価など、自分だけの記録項目を作れます。' },
-  { sel: '#ge-add-goal', text: '「＋ 目標を追加」— 「毎日10ページ」など期間(日・週・月・年)と数値を決めると、ホームと統計に進み具合が表示されます。' },
   { sel: '#ge-delete', text: 'ジャンルの削除はここから。まちがい防止のためジャンル名の入力が必要です。' },
 ];
 const SETTINGS_TOUR = [
